@@ -1,5 +1,5 @@
 /*
- * WChat Server v0.76 - 06/05/2019
+ * WChat Server v0.80 - 09/06/2019
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -33,6 +33,7 @@
 #define QUEUE_SIZE 10
 #define BUF_SIZE 2048
 #define MAX_CLIENTS 200
+#define MAX_USERS 5
 #define MAX_ROOMS 50
 
 struct sockaddr_in init_server_info()
@@ -59,13 +60,14 @@ typedef struct clients {
 }CLIENTS;
 
 // data structure for chatrooms
-struct chatroom {
+typedef struct chatroom {
 	char name[30];
 	CLIENTS members;
 	CLIENT *owner;
-};
+}CHATROOM;
 // chatrooms vector
 struct chatroom chatrooms[MAX_ROOMS];
+int numofrooms;
 
 void sendtoall(CLIENTS *clnts, PROTOCOL *protocol);					// sends msg to all connected clients
 void sendprivate(CLIENTS *clnts, PROTOCOL *protocol, int connfd);	// sends msg to a specified client
@@ -76,6 +78,10 @@ CLIENT *insert_client(CLIENTS *clnts, char *username, char *cl_addr, int socket)
 void remove_client(CLIENTS *clnts, int socket);						// removes a client from clients linked list
 void changename(CLIENTS *clnts, PROTOCOL *protocol, int socket);	// changes the name of a client
 void kickuser(CLIENTS *clnts, char *username, char *msg);			// kicks a client from the server
+char* create_roomlist();
+char* create_userlist(CLIENTS *clnts);
+void send_userlist(CLIENTS *clnts);
+void send_roomlist(CLIENTS *clnts);
 
 int main(int argc, char **argv)
 {
@@ -87,7 +93,7 @@ int main(int argc, char **argv)
     struct sockaddr_in cliaddr, servaddr;
     srand(time(NULL));
     CLIENTS clients={0,NULL};					// initialize the clients linked list
-    
+    numofrooms = 0;
 
     if (argc==2) strcpy(server_host,argv[1]);		// gets the server hostname from argv if specified
     else strcpy(server_host,"wiznick.ddns.net");	// else default server ip is wiznick.ddns.net
@@ -101,9 +107,13 @@ int main(int argc, char **argv)
     listen(listenfd, QUEUE_SIZE);  // start listening
 
 	char *timestamp = get_time();
-	printf(GRN"%s Welcome to WChat Server v0.76"RESET"\n",timestamp);
+	printf(GRN"%s Welcome to WChat Server v0.80"RESET"\n",timestamp);
     printf(RED"%s Server %s:%d started. Listening for incoming connections..."RESET"\n",timestamp,server_host,SERV_PORT);
 	free(timestamp);
+	
+	numofrooms = 2;
+	strcpy(chatrooms[0].name,"FCPorto");
+	strcpy(chatrooms[1].name,"Olympiakos");
 
     while (1)
     {
@@ -195,12 +205,12 @@ int main(int argc, char **argv)
 				newcl = insert_client(&clients, protocol->source, clad, connfd);	// insert the new client into the clients linked list
 				printf("%s User %s connected to the server, from %s, using socket %d.\n",timestamp,newcl->username,clad,newcl->client_socket);
 				char *connmsg = calloc(70,sizeof(char));
-				char *js = calloc(BUF_SIZE,sizeof(char));
+				char *js = calloc(BUF_SIZE,sizeof(char));				
 				sprintf(connmsg,"You are connected to the server %s.",server_host);
 				sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"welcome\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->source,connmsg,timestamp);
 				write(connfd,js,strlen(js)+1);
 				user_on(&clients, newcl->username);            // send msg to all clients that a new user has connected
-				free(connmsg); free(js);
+				free(js); free(connmsg);
 			}
 			free(timestamp); free(protocol);
         }
@@ -228,6 +238,8 @@ int main(int argc, char **argv)
 					else if (strcmp(protocol->type,"user_on")==0) user_on(&clients, current->username);
 					else if (strcmp(protocol->type,"user_off")==0) user_off(&clients, protocol);
 					else if (strcmp(protocol->type,"changename")==0) changename(&clients,protocol,connfd);
+					else if (strcmp(protocol->type,"userlist")==0) send_userlist(&clients);
+					else if (strcmp(protocol->type,"roomlist")==0) send_roomlist(&clients);
 					free(protocol);
 				}
 			}
@@ -320,6 +332,7 @@ void user_on(CLIENTS *clnts, char *username) {
 		free(ctmp);
 		current = current->next;
 	}
+	//send_userlist(clnts);
 	free(timestamp); free(tmp); free(js);
 }
 
@@ -338,6 +351,7 @@ void user_off(CLIENTS *clnts, PROTOCOL *protocol) {
 		free(ctmp);
 		current = current->next;
 	}
+	//send_userlist(clnts);
 	free(tmp); free(js);
 }
 
@@ -491,3 +505,59 @@ void kickuser(CLIENTS *clnts, char *username, char *msg) {
 	if (current==NULL) printf("%s User %s does not exist.\n",timestamp,username);
 	free(timestamp); free(js); free(tmp);
 }
+
+char* create_roomlist() {
+	char *list = calloc(numofrooms*MAX_ROOMS,sizeof(char)+1);
+	sprintf(list,"Rooms(%d):",numofrooms);	
+	for (int i=0; i<numofrooms; i++) {	
+		strcat(list, chatrooms[i].name);
+		strcat(list,",");
+	}
+	list[strlen(list)-1]='\0';	// replace the "," after last room with a '\0'
+	return list;
+}
+
+char* create_userlist(CLIENTS *clnts) {
+	char *list = calloc(clnts->numcl*30,sizeof(char)+1);
+	CLIENT *current=clnts->first;
+	sprintf(list,"Users(%d):",clnts->numcl);
+	while (current!=NULL) {
+		strcat(list, current->username);
+		strcat(list,",");
+		current = current->next;
+	}
+	list[strlen(list)-1]='\0';	// replace the "," after last name with a '\0'
+	return list;
+}
+
+void send_userlist(CLIENTS *clnts) {
+	char *js = calloc(BUF_SIZE,sizeof(char));
+	char *ulist = create_userlist(clnts);
+	char *timestamp = get_time();
+	sprintf(js,"{\"source\":\"Server\", \"target\":\"everyone\", \"type\":\"userlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",ulist,timestamp);
+	CLIENT *current=clnts->first;
+	while (current!=NULL) {				// cycle through all connected clients
+		int connfd = current->client_socket;
+		write(connfd,js,strlen(js)+1);
+		//printf("%s Sent userlist to %s.\n",timestamp,current->username); //debug msg
+		current = current->next;
+	}	
+	free(timestamp); free(ulist); free(js);	
+}
+
+void send_roomlist(CLIENTS *clnts) {
+	printf("roomlist requested\n");
+	char *js = calloc(BUF_SIZE,sizeof(char));
+	char *rlist = create_roomlist();
+	char *timestamp = get_time();
+	sprintf(js,"{\"source\":\"Server\", \"target\":\"everyone\", \"type\":\"roomlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",rlist,timestamp);
+	CLIENT *current=clnts->first;
+	while (current!=NULL) {				// cycle through all connected clients
+		int connfd = current->client_socket;
+		write(connfd,js,strlen(js)+1);
+		printf("%s Sent roomlist %s to %s.\n",timestamp,rlist,current->username); //debug msg
+		current = current->next;
+	}		
+	free(timestamp); free(rlist); free(js);	
+}	
+
