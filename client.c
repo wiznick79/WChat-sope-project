@@ -478,7 +478,7 @@ void *listenforincoming(void *s) {
 		else if (strcmp(protocol->type,"changename")==0) {			// forces a namechange 			
 			strcpy(username,protocol->target);
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);			
 		}		
 		else if (strcmp(protocol->type,"welcome")==0) {				// print the incoming welcome message
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
@@ -488,6 +488,7 @@ void *listenforincoming(void *s) {
 		else if (strcmp(protocol->type,"srvmsg")==0) {				// handle general server messages
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
 			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			request_user_list();
 		}
 		else if (strcmp(protocol->type,"private")==0) {				// print incoming private messages
 			gchar *msg = g_strdup_printf("%s %s whispers to you: %s",timestamp,protocol->source,protocol->content);
@@ -773,7 +774,7 @@ void sendusermsg(const gchar *gmsg) {
 		char *timestamp = get_time();
 		char *js = calloc(BUF_SIZE,sizeof(char));
 		sprintf(js,"{\"source\":\"%s\", \"target\":\"everyone\", \"type\":\"public\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,msg,timestamp);   
-		write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
+		write(srv_sock, js, strlen(js)+1); 		// send the  json string	to the server
 		free(js); free(timestamp);
 	}
 }
