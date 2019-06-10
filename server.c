@@ -84,6 +84,9 @@ char* create_userlist(CLIENTS *clnts);
 void send_userlist(CLIENTS *clnts);
 void send_roomlist(CLIENTS *clnts);
 void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
+void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
+void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
+void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 
 int main(int argc, char **argv)
 {
@@ -112,10 +115,6 @@ int main(int argc, char **argv)
 	printf(GRN"%s Welcome to WChat Server v0.80"RESET"\n",timestamp);
     printf(RED"%s Server %s:%d started. Listening for incoming connections..."RESET"\n",timestamp,server_host,SERV_PORT);
 	free(timestamp);
-	/*
-	numofrooms = 2;
-	strcpy(chatrooms[0].name,"FCPorto");
-	strcpy(chatrooms[1].name,"Olympiakos");*/
 
     while (1)
     {
@@ -229,7 +228,9 @@ int main(int argc, char **argv)
 					printf("%s User %s disconnected from the server.\n",timestamp,current->username);
 					free(timestamp);
 					close(connfd);		// close the socket
-					remove_client(&clients, connfd);	// remove the client from the clients linked list
+					remove_client(&clients, connfd);	// remove the client from the clients linked list					
+					send_userlist(&clients);	
+					break;
 				}
 				else {
 					PROTOCOL *protocol=parse_message(buf);  //parse the buffer(buf) that is read from the socket
@@ -243,10 +244,13 @@ int main(int argc, char **argv)
 					else if (strcmp(protocol->type,"userlist")==0) send_userlist(&clients);
 					else if (strcmp(protocol->type,"roomlist")==0) send_roomlist(&clients);
 					else if (strcmp(protocol->type,"create")==0) create_room(&clients,protocol,connfd);
+					else if (strcmp(protocol->type,"join")==0) join_room(&clients,protocol,connfd);
+					else if (strcmp(protocol->type,"leave")==0) leave_room(&clients,protocol,connfd);
+					else if (strcmp(protocol->type,"ban")==0) ban_user_from_room(&clients,protocol,connfd);
 					free(protocol);
 				}
-			}
-			current=current->next;
+			}			
+			current=current->next;			
 		}
     }
 }
@@ -425,7 +429,7 @@ void remove_client(CLIENTS *clnts, int socket) {
 		CLIENT *cdel = clnts->first;
 		clnts->first = cdel->next;
 		clnts->numcl--;
-		free(cdel);
+		free(cdel);		
 		return;
 	}
 	CLIENT *previous=clnts->first, *current=clnts->first->next;
@@ -531,23 +535,23 @@ char* create_userlist(CLIENTS *clnts) {
 	return list;
 }
 
-void send_userlist(CLIENTS *clnts) {
-	char *js = calloc(BUF_SIZE,sizeof(char));
-	char *ulist = create_userlist(clnts);
-	char *timestamp = get_time();
+void send_userlist(CLIENTS *clnts) {	
+	char *js = calloc(BUF_SIZE,sizeof(char));	
+	char *ulist = create_userlist(clnts);	
+	char *timestamp = get_time();	
 	sprintf(js,"{\"source\":\"Server\", \"target\":\"everyone\", \"type\":\"userlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",ulist,timestamp);
-	CLIENT *current=clnts->first;
+	CLIENT *current=clnts->first;	
 	while (current!=NULL) {				// cycle through all connected clients
 		int connfd = current->client_socket;
 		write(connfd,js,strlen(js)+1);
 		//printf("%s Sent userlist to %s.\n",timestamp,current->username); //debug msg
 		current = current->next;
 	}	
-	free(timestamp); free(ulist); free(js);	
+	free(timestamp); free(ulist); free(js);
 }
 
 void send_roomlist(CLIENTS *clnts) {
-	printf("roomlist requested\n");
+	//printf("roomlist requested\n");
 	char *js = calloc(BUF_SIZE,sizeof(char));
 	char *rlist = create_roomlist();
 	char *timestamp = get_time();
@@ -556,7 +560,7 @@ void send_roomlist(CLIENTS *clnts) {
 	while (current!=NULL) {				// cycle through all connected clients
 		int connfd = current->client_socket;
 		write(connfd,js,strlen(js)+1);
-		printf("%s Sent roomlist %s to %s.\n",timestamp,rlist,current->username); //debug msg
+		//printf("%s Sent roomlist %s to %s.\n",timestamp,rlist,current->username); //debug msg
 		current = current->next;
 	}		
 	free(timestamp); free(rlist); free(js);	
@@ -575,13 +579,27 @@ void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 	room->numofusers=1;
 	CLIENT *current=clnts->first;
 	while (current!=NULL) {	
-		if (connfd==current->client_socket)
+		if (connfd==current->client_socket) {
 			room->members[0]=*current;
 			room->owner=current;
+			break;
+		}
 		current = current->next;
 	}
 	chatrooms[numofrooms]=*room;
-	numofrooms++;	
+	numofrooms++;
+	//printf("%d\n",numofrooms);
+	//printf("%s, %s, %s\n",room->name,room->owner->username,room->members[0].username);
 }
 	
+void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
+	printf("User %s trying to join room %s\n",protocol->source,protocol->content);
+}
 
+void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
+	printf("User %s trying to leave from room %s\n",protocol->source,protocol->content);
+}
+
+void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
+	printf("User %s trying to ban user %s from room %s\n",protocol->source,protocol->content,protocol->target);
+}
