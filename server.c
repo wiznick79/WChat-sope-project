@@ -34,7 +34,7 @@
 #define BUF_SIZE 2048
 #define MAX_CLIENTS 200
 #define MAX_USERS 5
-#define MAX_ROOMS 50
+#define MAX_ROOMS 10
 
 struct sockaddr_in init_server_info()
 {
@@ -62,7 +62,8 @@ typedef struct clients {
 // data structure for chatrooms
 typedef struct chatroom {
 	char name[30];
-	CLIENTS members;
+	int numofusers;	
+	struct client members[MAX_USERS];
 	CLIENT *owner;
 }CHATROOM;
 // chatrooms vector
@@ -82,6 +83,7 @@ char* create_roomlist();
 char* create_userlist(CLIENTS *clnts);
 void send_userlist(CLIENTS *clnts);
 void send_roomlist(CLIENTS *clnts);
+void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 
 int main(int argc, char **argv)
 {
@@ -110,10 +112,10 @@ int main(int argc, char **argv)
 	printf(GRN"%s Welcome to WChat Server v0.80"RESET"\n",timestamp);
     printf(RED"%s Server %s:%d started. Listening for incoming connections..."RESET"\n",timestamp,server_host,SERV_PORT);
 	free(timestamp);
-	
+	/*
 	numofrooms = 2;
 	strcpy(chatrooms[0].name,"FCPorto");
-	strcpy(chatrooms[1].name,"Olympiakos");
+	strcpy(chatrooms[1].name,"Olympiakos");*/
 
     while (1)
     {
@@ -240,6 +242,7 @@ int main(int argc, char **argv)
 					else if (strcmp(protocol->type,"changename")==0) changename(&clients,protocol,connfd);
 					else if (strcmp(protocol->type,"userlist")==0) send_userlist(&clients);
 					else if (strcmp(protocol->type,"roomlist")==0) send_roomlist(&clients);
+					else if (strcmp(protocol->type,"create")==0) create_room(&clients,protocol,connfd);
 					free(protocol);
 				}
 			}
@@ -331,8 +334,7 @@ void user_on(CLIENTS *clnts, char *username) {
 		}
 		free(ctmp);
 		current = current->next;
-	}
-	//send_userlist(clnts);
+	}	
 	free(timestamp); free(tmp); free(js);
 }
 
@@ -350,8 +352,7 @@ void user_off(CLIENTS *clnts, PROTOCOL *protocol) {
 		}
 		free(ctmp);
 		current = current->next;
-	}
-	//send_userlist(clnts);
+	}	
 	free(tmp); free(js);
 }
 
@@ -559,5 +560,28 @@ void send_roomlist(CLIENTS *clnts) {
 		current = current->next;
 	}		
 	free(timestamp); free(rlist); free(js);	
-}	
+}
+
+void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
+	printf("User %s trying to create room %s\n",protocol->source,protocol->content);
+	for (int i=0;i<numofrooms;i++) {
+		if (strcmp(protocol->content,chatrooms[i].name)==0) {
+			printf("Chatroom already exists\n");
+			return;
+		}
+	}
+	CHATROOM *room = malloc(sizeof(CHATROOM));
+	strcpy(room->name,protocol->content);
+	room->numofusers=1;
+	CLIENT *current=clnts->first;
+	while (current!=NULL) {	
+		if (connfd==current->client_socket)
+			room->members[0]=*current;
+			room->owner=current;
+		current = current->next;
+	}
+	chatrooms[numofrooms]=*room;
+	numofrooms++;	
+}
+	
 
