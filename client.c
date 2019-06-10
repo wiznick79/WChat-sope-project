@@ -251,7 +251,7 @@ static GtkWidget *help_window() {
 
 static GtkWidget *about_window() {
 	GtkWidget *about = gtk_window_new (GTK_WINDOW_TOPLEVEL);
-	gtk_widget_set_size_request (GTK_WIDGET (about), 300, 150);
+	gtk_widget_set_size_request (GTK_WIDGET (about), 260, 150);
     gtk_window_set_title (GTK_WINDOW (about), "About WChat v0.80");
     gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
     gtk_window_set_resizable(GTK_WINDOW(about),FALSE);
@@ -261,15 +261,15 @@ static GtkWidget *about_window() {
     GtkWidget *abox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
     gtk_container_add(GTK_CONTAINER(about),abox);
     
-    GtkWidget *label = gtk_label_new("WChat v0.80\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa, 2019");
+    GtkWidget *label = gtk_label_new("WChat v0.80\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa\nCopyright (c) 2019");
     gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
     gtk_container_add(GTK_CONTAINER(abox),label);
     
 	GtkWidget *button = gtk_button_new_with_label("OK");
 	gtk_widget_set_margin_top(button,5);
 	gtk_widget_set_margin_bottom(button,10);
-	gtk_widget_set_margin_start(button,120);
-	gtk_widget_set_margin_end(button,120);
+	gtk_widget_set_margin_start(button,100);
+	gtk_widget_set_margin_end(button,100);
 	gtk_box_pack_start (GTK_BOX(abox), button, FALSE, FALSE, 0);
 
 	gtk_widget_show_all(about);
@@ -689,11 +689,12 @@ void sendusermsg(const gchar *gmsg) {
 			}
 			else {
 				char *tmp = calloc (BUF_SIZE,sizeof(char));
-				strcpy(tmp,msg+j+6);	// set the correct beginning of message					
+				strcpy(tmp,msg+j+6);	// set the correct beginning of message	
+				gchar *str = g_strdup_printf("%s You whisper to user %s: %s",timestamp,target,tmp);
+				insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),str);
 				char *js = calloc(BUF_SIZE,sizeof(char));
 				// make a json string of private type
 				sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"private\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,target,tmp,timestamp);
-				//printf(MAG"%s You whisper to user %s: %s"RESET"\n",timestamp,target,tmp);
 				write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
 				free(js); free(tmp); 
 			}
