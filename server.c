@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #include "libs/my_protocol.c"
 #include "libs/my_protocol.h"
