@@ -1,5 +1,5 @@
 /*
- * WChat Server v0.80 - 09/06/2019
+ * WChat Server v0.84 - 09/06/2019
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     listen(listenfd, QUEUE_SIZE);  // start listening
 
 	char *timestamp = get_time();
-	printf(GRN"%s Welcome to WChat Server v0.80"RESET"\n",timestamp);
+	printf(GRN"%s Welcome to WChat Server v0.84"RESET"\n",timestamp);
     printf(RED"%s Server %s:%d started. Listening for incoming connections..."RESET"\n",timestamp,server_host,SERV_PORT);
 	free(timestamp);
 
