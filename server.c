@@ -1,5 +1,5 @@
 /*
- * WChat Server v0.84 - 09/06/2019
+ * WChat Server v0.84 - 11/06/2019
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -35,7 +35,7 @@
 #define BUF_SIZE 2048
 #define MAX_CLIENTS 200
 #define MAX_USERS 5
-#define MAX_ROOMS 10
+#define MAX_ROOMS 50
 
 struct sockaddr_in init_server_info()
 {
@@ -94,6 +94,7 @@ int main(int argc, char **argv)
     char server_host[30];
     int maxfd, listenfd;
     fd_set allset;
+    pthread_t newctn,incmsg;
     char buf[BUF_SIZE];
     char *msg = calloc(BUF_SIZE,sizeof(char));
     struct sockaddr_in cliaddr, servaddr;
@@ -214,6 +215,7 @@ int main(int argc, char **argv)
 				user_on(&clients, newcl->username);            // send msg to all clients that a new user has connected
 				free(js); free(connmsg);
 			}
+			send_roomlist(&clients);
 			free(timestamp); free(protocol);
         }
         current=clients.first;
@@ -513,8 +515,8 @@ void kickuser(CLIENTS *clnts, char *username, char *msg) {
 }
 
 char* create_roomlist() {
-	char *list = calloc(numofrooms*MAX_ROOMS,sizeof(char)+1);
-	sprintf(list,"Rooms(%d):",numofrooms);	
+	char *list = calloc(numofrooms*30,sizeof(char)+1);
+	sprintf(list,"Rooms(%2d):",numofrooms);	
 	for (int i=0; i<numofrooms; i++) {	
 		strcat(list, chatrooms[i].name);
 		strcat(list,",");
@@ -526,7 +528,7 @@ char* create_roomlist() {
 char* create_userlist(CLIENTS *clnts) {
 	char *list = calloc(clnts->numcl*30,sizeof(char)+1);
 	CLIENT *current=clnts->first;
-	sprintf(list,"Users(%d):",clnts->numcl);
+	sprintf(list,"Users(%2d):",clnts->numcl);
 	while (current!=NULL) {
 		strcat(list, current->username);
 		strcat(list,",");

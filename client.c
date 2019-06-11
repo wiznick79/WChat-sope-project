@@ -1,5 +1,5 @@
 /*
- * Chat Client v0.84 (pthread+gtk version)- 10/06/2019 
+ * Chat Client v0.85 (pthread+gtk version)- 11/06/2019 
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -26,15 +26,9 @@
 
 #define RED "\x1B[31m"
 #define GRN "\x1B[32m"
-#define YEL "\x1B[33m"
-#define BLU "\x1B[34m"
-#define MAG "\x1B[35m"
-#define CYN "\x1B[36m"
-#define WHT "\x1B[37m"
 #define RESET "\x1B[0m"
 #define SERVER_PORT 10007		/* arbitrary, but client and server must agree */
 #define BUF_SIZE 1024			/* block transfer size */
-
 
 GtkWidget *window;
 GtkWidget *grid;
@@ -55,17 +49,25 @@ void update_room_list(char *roomslist);
 void request_user_list();
 void request_room_list();
 void sendusermsg(const gchar *gmsg);
+void create_room_request();
 void create_room(const gchar *roomname);
 void join_room(const gchar *roomname);
 void leave_room(const gchar *roomname);
 void quit_program();
+void help_window();
+void about_window();
+void connect_to_srv(GtkWidget *entry, gpointer dialog);
 
+int c;	
+struct sockaddr_in channel;		/* holds IP address */ 
 char server_ip[30];
 char username[30];
 char users[100][30];
 char rooms[50][30];
+char jroom[30];
 char *args[3];
 int srv_sock,numofrooms;
+pthread_t snd,rcv;  
 
 struct sockaddr_in init_client_info(char* name) {
     struct hostent *h; /* info about server */
@@ -157,6 +159,65 @@ static GtkWidget *create_userlist() {
     return scrolled_window;
 }
 
+static void connect_dialog() {
+	GtkWidget *dialog,*dlabel,*dentry,*darea;
+	GtkDialogFlags flags = GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT;
+    dialog = gtk_dialog_new_with_buttons("Choose your username",GTK_WINDOW(window),flags,"OK",GTK_RESPONSE_OK,"Cancel",GTK_RESPONSE_CANCEL,NULL);
+    darea = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    dlabel = gtk_label_new("Type your username:");
+    gtk_container_add(GTK_CONTAINER(darea),dlabel);
+    dentry = gtk_entry_new();
+	g_signal_connect(dentry, "activate", G_CALLBACK(connect_to_srv), dialog);
+    gtk_container_add(GTK_CONTAINER(darea),dentry);
+    gtk_widget_show_all(dialog);
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_OK) {		
+		connect_to_srv(dentry,dialog);		
+	}
+    else 
+		gtk_widget_destroy(dialog);
+}
+
+void connect_to_srv(GtkWidget *entry, gpointer dialog) {
+	numofrooms=0;
+	if (strcmp(gtk_entry_get_text(GTK_ENTRY(entry)),"")!=0) {			
+		const gchar *str = gtk_entry_get_text(GTK_ENTRY(entry));
+		strcpy(username,str);			
+		int k=0;
+		while (username[k]!='\0') {			// loop to replace all non-alphanumeric chars with an underscore
+			if (isalnum(username[k])==0) username[k]='_';
+			k++;
+		}
+		gtk_widget_destroy(dialog);					
+	}
+	else {		
+		connect_dialog();
+	}
+			 
+    srv_sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (srv_sock < 0) {
+        perror("Cannot create socket");
+        exit(-1);
+    }
+        	    
+    channel = init_client_info(server_ip);
+       
+    c = connect(srv_sock, (struct sockaddr *) &channel, sizeof(channel));
+    if (c < 0) {
+        perror("Cannot connect to server");
+        exit(-1);
+    }  
+    
+    pthread_create(&rcv, NULL, listenforincoming, NULL); // create thread rcv to receive messages, using function listenforincoming
+	pthread_create(&snd, NULL, sendmessages, NULL);	// create thread snd to send messages, using function sendmessages
+    
+    char *js = calloc(BUF_SIZE,sizeof(char));
+    char *timestamp = get_time();   
+    // create json string of type registration and sends it to the server
+    sprintf(js,"{\"source\":\"%s\", \"target\":\"server\", \"type\":\"registration\", \"content\":\"null\", \"timestamp\":\"%s\"}",username,timestamp);
+    write(srv_sock, js, strlen(js)+1);
+	free(timestamp); free(js);		
+}
 
 static void insert_text(GtkTextBuffer *buffer, const gchar *entry_text) {
     GtkTextIter txtiter;
@@ -184,7 +245,6 @@ static void enter_callback(GtkWidget *widget, GtkWidget *entry) {
     gtk_entry_set_text (GTK_ENTRY (entry), "");   
 }
 
-
 /* Create a scrolled text area that displays a "message" */
 static GtkWidget *create_text(void) {
     GtkWidget *scrolled_window;
@@ -199,85 +259,6 @@ static GtkWidget *create_text(void) {
     gtk_container_add (GTK_CONTAINER (scrolled_window), view);
     gtk_widget_show_all (scrolled_window);
     return scrolled_window;
-}
-
-static GtkWidget *help_window() {
-	gchar *txt;
-	GtkWidget *help = gtk_window_new (GTK_WINDOW_TOPLEVEL);
-	gtk_widget_set_size_request (GTK_WIDGET (help), 600, 250);
-    gtk_window_set_title (GTK_WINDOW (help), "Wchat v0.84 - help");
-    gtk_window_set_resizable(GTK_WINDOW(help),FALSE);
-    gtk_window_set_modal(GTK_WINDOW(help),FALSE);
-    gtk_window_set_transient_for(GTK_WINDOW(help),GTK_WINDOW(window));
-    
-    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
-    gtk_container_add(GTK_CONTAINER(help),hbox);
-    
-    GtkWidget *label = gtk_label_new("WChat v0.84 - Available commands: ");
-    gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
-    gtk_container_add(GTK_CONTAINER(hbox),label);
-    
-    GtkWidget *text = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(text), FALSE);
-    gtk_widget_set_margin_start(text,5);
-    gtk_widget_set_margin_end(text,5);
-    txt = g_strdup_printf("/name <new_username> - to change your nickname");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/whoisonline - to see the online users");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/msg <username> <message_here> - to send a private message to an online user");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/create <room_name> - to create a new room");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/join <room_name> - to join an existing room");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/leave <room_name> - to leave a joined room");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/ban <room_name> <user_name> - to ban a user from a room (Moderator only)");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/showrooms - to see the existing rooms");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);
-    txt = g_strdup_printf("/showusers <room_name> - to see the users of a room");
-    insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (text)),txt);   
-    gtk_container_add(GTK_CONTAINER(hbox),text);
-        
-	GtkWidget *button = gtk_button_new_with_label("CLOSE");
-	gtk_widget_set_margin_top(button,5);
-	gtk_widget_set_margin_bottom(button,10);
-	gtk_widget_set_margin_start(button,250);
-	gtk_widget_set_margin_end(button,250);
-	gtk_box_pack_start (GTK_BOX(hbox), button, FALSE, FALSE, 0);
-
-	gtk_widget_show_all(help);
-	g_signal_connect_swapped(button, "clicked", G_CALLBACK(gtk_widget_destroy), help); 
-}
-
-
-static GtkWidget *about_window() {
-	GtkWidget *about = gtk_window_new (GTK_WINDOW_TOPLEVEL);
-	gtk_widget_set_size_request (GTK_WIDGET (about), 260, 150);
-    gtk_window_set_title (GTK_WINDOW (about), "About WChat v0.84");
-    gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
-    gtk_window_set_resizable(GTK_WINDOW(about),FALSE);
-    gtk_window_set_modal(GTK_WINDOW(about),TRUE);
-    gtk_window_set_transient_for(GTK_WINDOW(about),GTK_WINDOW(window));
-    
-    GtkWidget *abox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
-    gtk_container_add(GTK_CONTAINER(about),abox);
-    
-    GtkWidget *label = gtk_label_new("WChat v0.84\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa\nCopyright (c) 2019");
-    gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
-    gtk_container_add(GTK_CONTAINER(abox),label);
-    
-	GtkWidget *button = gtk_button_new_with_label("OK");
-	gtk_widget_set_margin_top(button,5);
-	gtk_widget_set_margin_bottom(button,10);
-	gtk_widget_set_margin_start(button,100);
-	gtk_widget_set_margin_end(button,100);
-	gtk_box_pack_start (GTK_BOX(abox), button, FALSE, FALSE, 0);
-
-	gtk_widget_show_all(about);
-	g_signal_connect_swapped(button, "clicked", G_CALLBACK(gtk_widget_destroy), about); 
 }
 
 int main(int argc, char *argv[])
@@ -295,11 +276,7 @@ int main(int argc, char *argv[])
     GtkWidget *item_connect;
     GtkWidget *item_disconnect;
     GtkWidget *item_help;
-    GtkWidget *item_about;
-
-    int c;	
-    struct sockaddr_in channel;		/* holds IP address */          
-    pthread_t snd,rcv;    
+    GtkWidget *item_about;     
     
     args[0] = malloc(sizeof(char)*(strlen(argv[0])+1));    
     strcpy(args[0],argv[0]);
@@ -315,39 +292,8 @@ int main(int argc, char *argv[])
     
     char *timestamp = get_time();
     printf(GRN"%s Welcome to WChat v0.84"RESET"\n",timestamp);
-    printf(GRN"%s Type your username:"RESET" ",timestamp);	
-    fgets(username,30,stdin);
-    int k=0;
-    while (username[k]!='\n') {			// loop to replace all non-alphanumeric chars with an underscore
-		if (isalnum(username[k])==0) username[k]='_';
-		k++;
-	}	
-    username[k]=0;
-    numofrooms=0;      
-   
-    srv_sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (srv_sock < 0) {
-        perror("Cannot create socket");
-        exit(-1);
-    }
-        	    
-    channel = init_client_info(server_ip);
-       
-    c = connect(srv_sock, (struct sockaddr *) &channel, sizeof(channel));
-    if (c < 0) {
-        perror("Cannot connect to server");
-        exit(-1);
-    }  
-    
-    pthread_create(&rcv, NULL, listenforincoming, NULL); // create thread rcv to receive messages, using function listenforincoming
-	pthread_create(&snd, NULL, sendmessages, NULL);	// create thread snd to send messages, using function sendmessages
-    
-    char *js = calloc(BUF_SIZE,sizeof(char));  
-    // create json string of type registration and sends it to the server
-    sprintf(js,"{\"source\":\"%s\", \"target\":\"server\", \"type\":\"registration\", \"content\":\"null\", \"timestamp\":\"%s\"}",username,timestamp);
-    write(srv_sock, js, strlen(js)+1);
-	free(timestamp); free(js);
-	
+    free(timestamp);
+
     gtk_init (&argc, &argv);
 
     /* create a new window */
@@ -393,7 +339,8 @@ int main(int argc, char *argv[])
     gtk_menu_shell_append(GTK_MENU_SHELL(helpsubmenu), item_help);
     gtk_menu_shell_append(GTK_MENU_SHELL(helpsubmenu), item_about);  
     gtk_menu_shell_append(GTK_MENU_SHELL(menubar), menuhelp);    
-    gtk_grid_attach(GTK_GRID (grid), menubar, 0, 0, 2, 1);    
+    gtk_grid_attach(GTK_GRID (grid), menubar, 0, 0, 2, 1);
+    g_signal_connect_swapped (item_connect, "activate", G_CALLBACK (connect_dialog), NULL);    
 	g_signal_connect_swapped (item_quit, "activate", G_CALLBACK (quit_program), NULL);
 	g_signal_connect_swapped (item_help, "activate", G_CALLBACK (help_window), NULL);
 	g_signal_connect_swapped (item_about, "activate", G_CALLBACK (about_window), NULL);
@@ -406,11 +353,11 @@ int main(int argc, char *argv[])
 	gtk_widget_set_vexpand(cr_room,FALSE);
 	gtk_widget_set_hexpand(cr_room,FALSE);
 	gtk_entry_set_max_length(GTK_ENTRY(cr_room),30);
-	g_signal_connect(cr_room, "activate", G_CALLBACK(create_room), NULL);
+	g_signal_connect(cr_room, "activate", G_CALLBACK(create_room_request), cr_room);
 	gtk_entry_set_placeholder_text (GTK_ENTRY(cr_room), "Type room name...");
 	gtk_box_pack_start (GTK_BOX (box), cr_room, FALSE, FALSE, 0);
 	create_btn = gtk_button_new_with_label("Create room");
-	g_signal_connect_swapped (create_btn, "clicked", G_CALLBACK (create_room), NULL);
+	g_signal_connect_swapped (create_btn, "clicked", G_CALLBACK (create_room_request), cr_room);
 	gtk_box_pack_start (GTK_BOX (box), create_btn, FALSE, FALSE, 0);
 	combobox = gtk_combo_box_text_new_with_entry();	
 	gtk_widget_set_margin_start(combobox,30);
@@ -419,7 +366,6 @@ int main(int argc, char *argv[])
 	g_signal_connect_swapped (join_btn, "clicked", G_CALLBACK (join_room), NULL);
 	gtk_box_pack_start (GTK_BOX (box), join_btn, FALSE, FALSE, 0);	
 	gtk_grid_attach(GTK_GRID (grid), box, 0, 1, 2, 1);
-   
 	roomlist = create_roomlist();
 	gtk_widget_set_vexpand(roomlist,TRUE);
 	gtk_widget_set_hexpand(roomlist,FALSE);
@@ -451,9 +397,10 @@ int main(int argc, char *argv[])
     gchar *status = g_strdup_printf("Welcome to WChat v0.84. Connected to %s as %s.",server_ip,username);
     gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
     gtk_grid_attach_next_to(GTK_GRID (grid), statusbar, roomlist, GTK_POS_BOTTOM, 2, 1);
-    gtk_widget_grab_focus (entry);
-    request_room_list();
+    gtk_widget_grab_focus (entry);    
+    
     gtk_widget_show_all(window);
+    connect_dialog();
     
 	gtk_main(); 
     
@@ -464,9 +411,9 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void *listenforincoming(void *s) {
-	
-	char* buf = calloc(BUF_SIZE,sizeof(char));		
+void *listenforincoming(void *s) {	
+	char* buf = calloc(BUF_SIZE,sizeof(char));
+	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));		
 
 	while (read(srv_sock,buf,BUF_SIZE)) {
 		//write(1,buf,BUF_SIZE);	// debug msg
@@ -475,44 +422,47 @@ void *listenforincoming(void *s) {
 		//printf("Received msg of type %s\n",protocol->type); //debug msg
 		if (strcmp(protocol->type,"public")==0) {
 			gchar *msg = g_strdup_printf("%s %s: %s",timestamp,protocol->source,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			free(msg);
 		}
 		else if (strcmp(protocol->type,"changename")==0) {			// forces a namechange 			
 			strcpy(username,protocol->target);
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			gchar *status = g_strdup_printf("Welcome to WChat v0.84. Connected to %s as %s.",server_ip,username);
 			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
 			free(msg);			
 		}		
 		else if (strcmp(protocol->type,"welcome")==0) {				// print the incoming welcome message
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
-			request_user_list();
+			insert_text(buffer,msg);
+			request_room_list();				
+			gchar *status = g_strdup_printf("Welcome to WChat v0.84. Connected to %s as %s.",server_ip,username);sleep(1);
+			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
+			request_user_list();					
 			free(msg);												
 		}
 		else if (strcmp(protocol->type,"srvmsg")==0) {				// handle general server messages
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			request_user_list();
 			free(msg);
 		}
 		else if (strcmp(protocol->type,"private")==0) {				// print incoming private messages
 			gchar *msg = g_strdup_printf("%s %s whispers to you: %s",timestamp,protocol->source,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			free(msg);
 		}
 		else if (strcmp(protocol->type,"user_on")==0) {				// print user on messages
 			gchar *msg = g_strdup_printf("%s User %s has logged in.",timestamp,protocol->source);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);	
+			insert_text(buffer,msg);	
 			request_user_list();
 			free(msg);		
 		}
 		else if (strcmp(protocol->type,"user_off")==0) {			// print user off messages
 			if (strcmp(protocol->content,"")==0) strcpy(protocol->content,"Leaving");
 			gchar *msg = g_strdup_printf("%s User %s has logged off (%s).",timestamp,protocol->source,protocol->content);	
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			request_user_list();
 			free(msg);		
 		}
@@ -526,12 +476,12 @@ void *listenforincoming(void *s) {
 		}
 		else if (strcmp(protocol->type,"whoisonline")==0) {			// print whoisonline requests
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);
+			insert_text(buffer,msg);
 			free(msg);						
 		}
 		else if (strcmp(protocol->type,"kick")==0) {		// if kicked from server, close socket and exit client
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),msg);			
+			insert_text(buffer,msg);			
 			printf(GRN"%s You got kicked from the server. Restarting client."RESET"\n",timestamp);
 			gtk_widget_destroy(window);
 			close(srv_sock);
@@ -553,7 +503,7 @@ void *listenforincoming(void *s) {
 
 void *sendmessages(void *s) {	
 	char* msg = calloc(BUF_SIZE,sizeof(char)); 
-
+	
 	while(fgets(msg,BUF_SIZE,stdin) > 0) {
 		sendusermsg(msg);
 		memset(msg,0,BUF_SIZE);
@@ -574,7 +524,7 @@ void update_user_list(char* userslist) {
 	int len = strlen(userslist);
 	int k=0,l=0;
 	memset(users,0,3000);
-	for (int i=9;i<len;i++) {		
+	for (int i=10;i<len;i++) {		
 		if (userslist[i]==',') {
 			users[k][l]='\0';
 			k++;					
@@ -586,11 +536,11 @@ void update_user_list(char* userslist) {
 			l++;
 		}
 	}
-	gtk_list_store_clear(GTK_LIST_STORE (umodel));
+	gtk_list_store_clear(GTK_LIST_STORE(umodel));
 	for (int i = 0; i < 10; i++) {
-		gchar *ustr = g_strdup_printf ("%s", users[i]);		
-		gtk_list_store_append (GTK_LIST_STORE (umodel), &useriter);
-		gtk_list_store_set (GTK_LIST_STORE (umodel), &useriter, 0, ustr, -1);
+		gchar *ustr = g_strdup_printf("%s", users[i]);		
+		gtk_list_store_append (GTK_LIST_STORE(umodel), &useriter);
+		gtk_list_store_set (GTK_LIST_STORE(umodel), &useriter, 0, ustr, -1);
 		g_free (ustr);
 	}
 }
@@ -609,8 +559,9 @@ void update_room_list(char *roomslist) {
 	int k=0,l=0;
 	memset(rooms,0,1500);	
 	str[0]=roomslist[6];
+	str[1]=roomslist[7];
 	numofrooms = atoi(str);
-	for (int i=9;i<len;i++) {		
+	for (int i=10;i<len;i++) {		
 		if (roomslist[i]==',') {
 			rooms[k][l]='\0';
 			k++;					
@@ -641,14 +592,18 @@ void request_room_list() {
 	free(timestamp); free(js);
 }
 
+void create_room_request() {
+	const gchar *roomname = gtk_entry_get_text(GTK_ENTRY(cr_room));
+	create_room(roomname);
+	gtk_entry_set_text(GTK_ENTRY(cr_room),"");
+}
+
 void create_room(const gchar *roomname) {
-	if (roomname==NULL) roomname = gtk_entry_get_text(GTK_ENTRY(cr_room));
 	char *timestamp = get_time();
 	char *js = calloc(BUF_SIZE,sizeof(char));
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"create\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,roomname,timestamp);
 	write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
 	free(timestamp); free(js);
-	gtk_entry_set_text(GTK_ENTRY(cr_room),"");
 	request_room_list();
 }
 
@@ -675,8 +630,94 @@ void quit_program() {
 	exit(0);
 }
 
+void help_window() {
+	gchar *txt;
+	//GtkWidget *help = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+	GtkWidget *help = gtk_dialog_new_with_buttons("WChat help",GTK_WINDOW(window),GTK_DIALOG_MODAL,NULL,NULL);
+		
+	gtk_widget_set_size_request (GTK_WIDGET (help), 600, 270);
+   // gtk_window_set_title (GTK_WINDOW (help), "Wchat v0.84 - help");
+   // gtk_window_set_resizable(GTK_WINDOW(help),FALSE);
+   // gtk_window_set_modal(GTK_WINDOW(help),FALSE);
+   // gtk_window_set_transient_for(GTK_WINDOW(help),GTK_WINDOW(window));
+    
+   // GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
+   // gtk_container_add(GTK_CONTAINER(help),hbox);
+    GtkWidget *hbox = gtk_dialog_get_content_area(GTK_DIALOG(help));
+    
+    GtkWidget *label = gtk_label_new("WChat v0.84 - Available commands: ");
+    gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
+    gtk_container_add(GTK_CONTAINER(hbox),label);
+    
+    GtkWidget *text = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(text), FALSE);
+    gtk_widget_set_margin_start(text,5);
+    gtk_widget_set_margin_end(text,5);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text));
+    txt = g_strdup_printf("/name <new_username> - to change your nickname");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/whoisonline - to see the online users");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/msg <username> <message_here> - to send a private message to an online user");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/create <room_name> - to create a new room");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/join <room_name> - to join an existing room");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/leave <room_name> - to leave a joined room");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/ban <room_name> <user_name> - to ban a user from a room (Moderator only)");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/showrooms - to see the existing rooms");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/showusers <room_name> - to see the users of a room");
+    insert_text(buffer,txt);
+    txt = g_strdup_printf("/help - to see the available commands (...this window)");
+    insert_text(buffer,txt);    
+    gtk_container_add(GTK_CONTAINER(hbox),text);
+        
+	GtkWidget *button = gtk_button_new_with_label("CLOSE");
+	gtk_widget_set_margin_top(button,5);
+	gtk_widget_set_margin_bottom(button,10);
+	gtk_widget_set_margin_start(button,250);
+	gtk_widget_set_margin_end(button,250);
+	gtk_box_pack_start (GTK_BOX(hbox), button, FALSE, FALSE, 0);
+
+	gtk_widget_show_all(help);
+	g_signal_connect_swapped(button, "clicked", G_CALLBACK(gtk_widget_destroy), help); 
+}
+
+
+void about_window() {
+	GtkWidget *about = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+	gtk_widget_set_size_request (GTK_WIDGET (about), 260, 150);
+    gtk_window_set_title (GTK_WINDOW (about), "About WChat v0.84");
+    gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
+    gtk_window_set_resizable(GTK_WINDOW(about),FALSE);
+    gtk_window_set_modal(GTK_WINDOW(about),TRUE);
+    gtk_window_set_transient_for(GTK_WINDOW(about),GTK_WINDOW(window));
+    
+    GtkWidget *abox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
+    gtk_container_add(GTK_CONTAINER(about),abox);
+    
+    GtkWidget *label = gtk_label_new("WChat v0.84\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa\nCopyright (c) 2019");
+    gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
+    gtk_container_add(GTK_CONTAINER(abox),label);
+    
+	GtkWidget *button = gtk_button_new_with_label("OK");
+	gtk_widget_set_margin_top(button,5);
+	gtk_widget_set_margin_bottom(button,10);
+	gtk_widget_set_margin_start(button,100);
+	gtk_widget_set_margin_end(button,100);
+	gtk_box_pack_start (GTK_BOX(abox), button, FALSE, FALSE, 0);
+
+	gtk_widget_show_all(about);
+	g_signal_connect_swapped(button, "clicked", G_CALLBACK(gtk_widget_destroy), about); 
+}
+
 void sendusermsg(const gchar *gmsg) {
-	char* msg = calloc(BUF_SIZE,sizeof(char));  
+	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+	char* msg = calloc(sizeof(gmsg),sizeof(char));  
 	strcpy(msg,gmsg);
 	int len = strlen(msg);
 	for (int i=0;i<len;i++) {		// loop to replace char " with a white space, cause it was causing crashes
@@ -714,14 +755,14 @@ void sendusermsg(const gchar *gmsg) {
 			char *tmp2=strlwr(target);
 			if (strcmp(tmp1,tmp2)==0) {		// checks if you try to whisper ...yourself
 				char *str = g_strdup_printf("%s You cannot whisper yourself.",timestamp);
-				insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),str);
+				insert_text(buffer,str);
 				free(str);
 			}
 			else {
 				char *tmp = calloc (BUF_SIZE,sizeof(char));
 				strcpy(tmp,msg+j+6);	// set the correct beginning of message	
 				gchar *str = g_strdup_printf("%s You whisper to user %s: %s",timestamp,target,tmp);
-				insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),str);
+				insert_text(buffer,str);
 				char *js = calloc(BUF_SIZE,sizeof(char));
 				// make a json string of private type
 				sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"private\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,target,tmp,timestamp);
@@ -756,7 +797,7 @@ void sendusermsg(const gchar *gmsg) {
 			char *timestamp = get_time();
 			if (strcmp(tmp,username)==0) {
 				char *str = g_strdup_printf("%s Your new nickname is same as the old.",timestamp);
-				insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),str);
+				insert_text(buffer,str);
 				free(str);
 			}
 			else {
@@ -770,12 +811,7 @@ void sendusermsg(const gchar *gmsg) {
 			free(timestamp);				
 		}
 		else if (strncmp(msg,"/help",5)==0) {
-			char *timestamp = get_time();
-			printf(GRN"%s Available commands:"RESET"\n/quit <optional_message> - to quit this application\n",timestamp);
-			printf("/name <new_username> - to change your nickname\n");
-			printf("/whoisonline - to see the online users\n");
-			printf("/msg <username> <message_here> - to send a private message to an online user\n");
-			free(timestamp);							
+			help_window();						
 		}
 		else if (strncmp(msg,"/create",7)==0) {
 			char *target = calloc(30,sizeof(char));
@@ -850,7 +886,7 @@ void sendusermsg(const gchar *gmsg) {
 		else {
 			char *timestamp = get_time();
 			gchar *str = g_strdup_printf("%s Invalid command: %s",timestamp,msg);
-			insert_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW (view)),str);	
+			insert_text(buffer,str);	
 			free(timestamp); free(str);
 		}
 	}
