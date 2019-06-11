@@ -70,6 +70,12 @@ typedef struct chatroom {
 // chatrooms vector
 struct chatroom chatrooms[MAX_ROOMS];
 int numofrooms;
+char server_host[30];
+int maxfd, listenfd, cnfd;
+fd_set allset;
+pthread_t newconn,incmsg;
+struct sockaddr_in cliaddr, servaddr;
+char buf[BUF_SIZE];
 
 void sendtoall(CLIENTS *clnts, PROTOCOL *protocol);					// sends msg to all connected clients
 void sendprivate(CLIENTS *clnts, PROTOCOL *protocol, int connfd);	// sends msg to a specified client
@@ -88,16 +94,12 @@ void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
+void *new_connection(void *cs);
+void *incoming_msgs(void *cs);
 
 int main(int argc, char **argv)
 {
-    char server_host[30];
-    int maxfd, listenfd;
-    fd_set allset;
-    pthread_t newctn,incmsg;
-    char buf[BUF_SIZE];
-    char *msg = calloc(BUF_SIZE,sizeof(char));
-    struct sockaddr_in cliaddr, servaddr;
+    char *msg = calloc(BUF_SIZE,sizeof(char));    
     srand(time(NULL));
     CLIENTS clients={0,NULL};					// initialize the clients linked list
     numofrooms = 0;
@@ -192,70 +194,85 @@ int main(int argc, char **argv)
 			memset(msg,0,BUF_SIZE);
 		}
 
-        if (FD_ISSET(listenfd, &allset))		//check if something happens in the listenfd (new connection)
-        {
-            socklen_t clilen = sizeof(cliaddr);
-            int connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);	// accept the connection
-            char *timestamp = get_time();
-            char *clad = inet_ntoa(cliaddr.sin_addr);
-            printf("%s New incoming connection from IP: %s\n",timestamp,clad);
-            read(connfd, buf, BUF_SIZE);		// read the file descriptor
-			
-            PROTOCOL *protocol=parse_message(buf);  // parse the buffer(buf) that is read from the socket
-            
-            if (strcmp(protocol->type,"registration")==0) {		// register the user
-				CLIENT *newcl = malloc(sizeof(CLIENT));
-				newcl = insert_client(&clients, protocol->source, clad, connfd);	// insert the new client into the clients linked list
-				printf("%s User %s connected to the server, from %s, using socket %d.\n",timestamp,newcl->username,clad,newcl->client_socket);
-				char *connmsg = calloc(70,sizeof(char));
-				char *js = calloc(BUF_SIZE,sizeof(char));				
-				sprintf(connmsg,"You are connected to the server %s.",server_host);
-				sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"welcome\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->source,connmsg,timestamp);
-				write(connfd,js,strlen(js)+1);
-				user_on(&clients, newcl->username);            // send msg to all clients that a new user has connected
-				free(js); free(connmsg);
-			}
-			send_roomlist(&clients);
-			free(timestamp); free(protocol);
-        }
-        current=clients.first;
-		while (current!=NULL) {
-			int connfd = current->client_socket;		// check the sockets of the connected clients
-
-			if (FD_ISSET(connfd, &allset)) {			// check if there is activity in one of them
-
-				int bytes = read(connfd, buf, BUF_SIZE);	// if there is activity, read the file descriptor
-				//write(1,buf,bytes); // debug msg
-				if (bytes==0) {			// if a client disconnects, delete him from the clients list
-					char *timestamp = get_time();
-					printf("%s User %s disconnected from the server.\n",timestamp,current->username);
-					free(timestamp);
-					close(connfd);		// close the socket
-					remove_client(&clients, connfd);	// remove the client from the clients linked list					
-					send_userlist(&clients);	
-					break;
-				}
-				else {
-					PROTOCOL *protocol=parse_message(buf);  //parse the buffer(buf) that is read from the socket
-					// check type of protocol received and call the correct function
-					if (strcmp(protocol->type,"public")==0) sendtoall(&clients, protocol);									
-					else if (strcmp(protocol->type,"private")==0) sendprivate(&clients, protocol, connfd);
-					else if (strcmp(protocol->type,"whoisonline")==0) whoisonline(&clients, protocol, connfd);
-					else if (strcmp(protocol->type,"user_on")==0) user_on(&clients, current->username);
-					else if (strcmp(protocol->type,"user_off")==0) user_off(&clients, protocol);
-					else if (strcmp(protocol->type,"changename")==0) changename(&clients,protocol,connfd);
-					else if (strcmp(protocol->type,"userlist")==0) send_userlist(&clients);
-					else if (strcmp(protocol->type,"roomlist")==0) send_roomlist(&clients);
-					else if (strcmp(protocol->type,"create")==0) create_room(&clients,protocol,connfd);
-					else if (strcmp(protocol->type,"join")==0) join_room(&clients,protocol,connfd);
-					else if (strcmp(protocol->type,"leave")==0) leave_room(&clients,protocol,connfd);
-					else if (strcmp(protocol->type,"ban")==0) ban_user_from_room(&clients,protocol,connfd);
-					free(protocol);
-				}
-			}			
-			current=current->next;			
+        if (FD_ISSET(listenfd, &allset)) {		//check if something happens in the listenfd (new connection)
+            pthread_create(&newconn, NULL, new_connection, &clients);
+            pthread_join(newconn,NULL);
 		}
-    }
+        current=clients.first;
+        while (current!=NULL) {
+			cnfd = current->client_socket;		// check the sockets of the connected clients
+			if (FD_ISSET(cnfd, &allset)) {		// check if there is activity in one of them
+				pthread_create(&incmsg, NULL, incoming_msgs, &clients);   
+				pthread_join(incmsg,NULL);
+			}
+			current=current->next;	
+		}				
+	}	    
+}
+
+void *new_connection(void *cs) {	
+	CLIENTS *clnts = ((CLIENTS *)cs);
+	socklen_t clilen = sizeof(cliaddr);
+    int connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);	// accept the connection
+    char *timestamp = get_time();
+    char *clad = inet_ntoa(cliaddr.sin_addr);
+    printf("%s New incoming connection from IP: %s\n",timestamp,clad);
+    read(connfd, buf, BUF_SIZE);		// read the file descriptor
+			
+    PROTOCOL *protocol=parse_message(buf);  // parse the buffer(buf) that is read from the socket
+            
+    if (strcmp(protocol->type,"registration")==0) {		// register the user
+		CLIENT *newcl = malloc(sizeof(CLIENT));
+		newcl = insert_client(clnts, protocol->source, clad, connfd);	// insert the new client into the clients linked list
+		printf("%s User %s connected to the server, from %s, using socket %d.\n",timestamp,newcl->username,clad,newcl->client_socket);
+		char *connmsg = calloc(70,sizeof(char));
+		char *js = calloc(BUF_SIZE,sizeof(char));				
+		sprintf(connmsg,"You are connected to the server %s.",server_host);
+		sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"welcome\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->source,connmsg,timestamp);
+		write(connfd,js,strlen(js)+1);
+		user_on(clnts, newcl->username);            // send msg to all clients that a new user has connected
+		free(js); free(connmsg);
+	}
+	send_roomlist(clnts);
+	free(timestamp); free(protocol);
+	pthread_exit(0); 		// terminate the pthread
+}
+
+void *incoming_msgs(void *cs) {
+	CLIENTS *clnts = ((CLIENTS *)cs);
+	CLIENT *current=clnts->first;
+	while (current!=NULL) {
+		if (current->client_socket==cnfd) break;
+		current=current->next;
+	}
+	int bytes = read(cnfd, buf, BUF_SIZE);	// read the file descriptor
+	//write(1,buf,bytes); // debug msg
+	if (bytes==0) {			// if a client disconnects, delete him from the clients list
+		char *timestamp = get_time();
+		printf("%s User %s disconnected from the server.\n",timestamp,current->username);
+		free(timestamp);
+		close(cnfd);		// close the socket
+		remove_client(clnts, cnfd);	// remove the client from the clients linked list					
+		send_userlist(clnts);		
+	}
+	else {
+		PROTOCOL *protocol=parse_message(buf);  //parse the buffer(buf) that is read from the socket
+		// check type of protocol received and call the correct function
+		if (strcmp(protocol->type,"public")==0) sendtoall(clnts, protocol);									
+		else if (strcmp(protocol->type,"private")==0) sendprivate(clnts, protocol, cnfd);
+		else if (strcmp(protocol->type,"whoisonline")==0) whoisonline(clnts, protocol, cnfd);
+		else if (strcmp(protocol->type,"user_on")==0) user_on(clnts, current->username);
+		else if (strcmp(protocol->type,"user_off")==0) user_off(clnts, protocol);
+		else if (strcmp(protocol->type,"changename")==0) changename(clnts,protocol,cnfd);
+		else if (strcmp(protocol->type,"userlist")==0) send_userlist(clnts);
+		else if (strcmp(protocol->type,"roomlist")==0) send_roomlist(clnts);
+		else if (strcmp(protocol->type,"create")==0) create_room(clnts,protocol,cnfd);
+		else if (strcmp(protocol->type,"join")==0) join_room(clnts,protocol,cnfd);	
+		else if (strcmp(protocol->type,"leave")==0) leave_room(clnts,protocol,cnfd);
+		else if (strcmp(protocol->type,"ban")==0) ban_user_from_room(clnts,protocol,cnfd);
+		free(protocol);
+	}	
+	pthread_exit(0); 		// terminate the pthread
 }
 
 // sends msgs of type public to all connected clients
