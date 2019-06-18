@@ -62,6 +62,7 @@ void quit_program();
 void help_window();
 void about_window();
 void connect_to_srv(GtkWidget *entry, gpointer dialog);
+void ban_user(char *msg);
 
 int c;	
 struct sockaddr_in channel;		/* holds IP address */ 
@@ -497,9 +498,13 @@ void *listenforincoming(void *s) {
 			free(timestamp); free(msg);							
 			execv(args[0],args);			
 		}
+		else if (strcmp(protocol->type,"ban")==0) {		// if banned from a room
+			gchar *msg = g_strdup_printf("%s You got banned from room %s",timestamp,protocol->target);
+			insert_text(buffer,msg);			
+			free(msg);
+		}
 		memset(buf,0,BUF_SIZE);
-		free(protocol);	free(timestamp);
-		
+		free(protocol);	free(timestamp);		
 	}
 	if (!read(srv_sock,buf,BUF_SIZE)) {				// restart client if server disconnects
 		char *timestamp = get_time();
@@ -724,7 +729,7 @@ void quit_program() {
 	char *timestamp = get_time();
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"everyone\", \"type\":\"user_off\", \"content\":\"Leaving\", \"timestamp\":\"%s\"}",username,timestamp);
 	write(srv_sock, js, strlen(js)+1);		// send a json string of type user_off to the server
-	gtk_widget_destroy(window);
+	//gtk_widget_destroy(window);
 	printf(RED"%s Exiting WChat..."RESET"\n",get_time());
 	exit(0);
 }
@@ -983,6 +988,9 @@ void sendusermsg(const gchar *gmsg) {
 			write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
 			free(js); free(timestamp);
 		}
+		else if (strncmp(msg,"/ban",4)==0) {
+			ban_user(msg);			
+		}
 		else {
 			char *timestamp = get_time();
 			gchar *str = g_strdup_printf("%s Invalid command: %s",timestamp,msg);
@@ -1007,6 +1015,40 @@ void sendusermsg(const gchar *gmsg) {
 			insert_text(buffer,str);	
 		}
 		free(timestamp); 
-	}
+	}	
+}
+
+void ban_user(char *msg) {
+	int len = strlen(msg);
+	char *timestamp = get_time();
+	char *js = calloc(BUF_SIZE,sizeof(char));
+	char *targetroom = calloc(30,sizeof(char));
+	char *targetuser = calloc(30,sizeof(char));
+	int i=0, j=0;
+	for (i=5;i<len;i++) {		// get the roomname 
+		if (msg[i]==' ') {			// cycle stops when it finds the white space ' ' 
+			targetroom[j]='\0';
+			break;
+		}
+		else {						// copy the roomname into the targetroom variable
+			targetroom[j]=msg[i];
+			j++;
+		}
+	}	
+	j=0;
+	for (++i;i<len;i++) {		// get the username 
+		if (msg[i]=='\n' || msg[i]=='\0') {			// cycle stops when it finds the '\0' or '\n'
+			targetuser[j]='\0';
+			break;
+		}
+		else {						// copy the username into the targetuser variable
+			targetuser[j]=msg[i];
+			j++;
+		}
+	}	
+	printf("%s Trying to ban %s from #%s.\n",timestamp,targetuser,targetroom);	
+	sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"ban\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,targetroom,targetuser,timestamp);   
+	write(srv_sock, js, strlen(js)+1); 		// send the  json string	to the server
+	free(targetuser); free(targetroom); free(timestamp); free(js);
 	
 }
