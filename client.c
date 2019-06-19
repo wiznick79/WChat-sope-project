@@ -473,8 +473,14 @@ void *listenforincoming(void *s) {
 			free(msg);		
 		}
 		else if (strcmp(protocol->type,"userlist")==0) {			
-			printf("userlist for room %s received: %s\n",protocol->target,protocol->content);		// debug msg
-			update_user_list(protocol->content);			
+			printf("userlist for room #%s received: %s\n",protocol->target,protocol->content);		// debug msg
+			GtkTreeModel *model = gtk_tree_view_get_model(GTK_TREE_VIEW(rooms_tree));
+			GtkTreeIter iter;
+			if (gtk_tree_selection_get_selected(gts,&model,&iter)) {
+				gtk_tree_model_get(model,&iter,0,&rtarget,-1);
+				if (strcmp(rtarget,protocol->target)==0)			
+					update_user_list(protocol->content);
+			}			
 		}
 		else if (strcmp(protocol->type,"roomlist")==0) {			
 			printf("roomlist received: %s \n",protocol->content);		// debug msg
@@ -499,8 +505,9 @@ void *listenforincoming(void *s) {
 			execv(args[0],args);			
 		}
 		else if (strcmp(protocol->type,"ban")==0) {		// if banned from a room
-			gchar *msg = g_strdup_printf("%s You got banned from room %s",timestamp,protocol->target);
-			insert_text(buffer,msg);			
+			gchar *msg = g_strdup_printf("%s You got banned from room #%s",timestamp,protocol->content);
+			insert_text(buffer,msg);
+			gtk_list_store_clear(GTK_LIST_STORE(umodel));			
 			free(msg);
 		}
 		memset(buf,0,BUF_SIZE);
@@ -638,7 +645,7 @@ void update_joined_list(char *joinedlist) {
 	gtk_list_store_clear(GTK_LIST_STORE (rmodel));
 	int i=0; 
     while (strcmp(jrooms[i],"\0")!=0) {
-		printf("adding room %s to joined rooms list\n",jrooms[i]); 
+		printf("adding room #%s to joined rooms list\n",jrooms[i]); 
 		gchar *rstr = g_strdup_printf ("%s", jrooms[i]);
         gtk_list_store_append (GTK_LIST_STORE (rmodel), &roomiter);        
         gtk_list_store_set (GTK_LIST_STORE (rmodel), &roomiter, 0, rstr, -1);
@@ -663,16 +670,8 @@ void create_room_request() {
 
 void create_room(const gchar *roomname) {
 	if (strcmp(roomname,"\0")==0) return;
-	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
 	char *timestamp = get_time();
 	char *js = calloc(BUF_SIZE,sizeof(char));
-	/*
-	if (strcmp(jroom,"\0")!=0) {
-		gchar *msg = g_strdup_printf("%s You are already in another room.",timestamp);
-		insert_text(buffer,msg);
-		free(timestamp);
-		return;
-	}	*/
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"create\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,roomname,timestamp);
 	write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
 	strcpy(jrooms[joined],roomname);
@@ -683,16 +682,7 @@ void create_room(const gchar *roomname) {
 
 void join_room(const gchar *roomname) {
 	char *timestamp = get_time();
-	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
 	if (roomname==NULL) roomname = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(combobox));
-	/*
-	if (strcmp(jroom,"\0")!=0) {
-		gchar *msg = g_strdup_printf("%s You are already in another room.",timestamp);
-		insert_text(buffer,msg);
-		free(timestamp);
-		return;
-	} */
-		
 	char *js = calloc(BUF_SIZE,sizeof(char));	
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"join\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,roomname,timestamp);
 	write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
@@ -1056,7 +1046,7 @@ void ban_user(char *msg) {
 		}
 	}	
 	printf("%s Trying to ban %s from #%s.\n",timestamp,targetuser,targetroom);	
-	sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"ban\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,targetroom,targetuser,timestamp);   
+	sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"ban\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,targetuser,targetroom,timestamp);   
 	write(srv_sock, js, strlen(js)+1); 		// send the  json string	to the server
 	free(targetuser); free(targetroom); free(timestamp); free(js);
 	
