@@ -596,10 +596,15 @@ char* create_userlist(CLIENTS *clnts, PROTOCOL *protocol) {
 void send_userlist(CLIENTS *clnts, PROTOCOL *protocol, int connfd) {	
 	char *js = calloc(BUF_SIZE,sizeof(char));	
 	char *ulist = create_userlist(clnts,protocol);	
-	char *timestamp = get_time();	
-	sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"userlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->content,ulist,timestamp);
+	char *timestamp = get_time();
+	CLIENT *current=clnts->first;
+	while (current!=NULL) {				// cycle through all connected clients
+		if (connfd==current->client_socket) break;
+		current = current->next;
+	}		
+	sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"userlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",current->username,ulist,timestamp);
 	write(connfd,js,strlen(js)+1);
-	printf("%s Sent userlist for room %s to %s.\n",timestamp,protocol->content,protocol->source); //debug msg
+	printf("%s Sent userlist for room %s to %s.\n",timestamp,protocol->content,current->username); //debug msg
 	free(timestamp); free(ulist); free(js);
 }
 
@@ -705,6 +710,16 @@ void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 				while (strcmp(current->joined[k],"\0")!=0) k++;
 				strcpy(current->joined[k],chatrooms[i].name);
 				send_joinedlist(clnts,connfd);
+				k=0;
+				while (strcmp(chatrooms[i].members[k].username,"\0")!=0) {
+					if (chatrooms[i].members[k].client_socket!=connfd) {
+						sprintf(str,"User %s has joined room #%s.",protocol->source,protocol->content);
+						sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k].username,str,timestamp);
+						write(chatrooms[i].members[k].client_socket,js,strlen(js)+1);
+						send_userlist(clnts,protocol,chatrooms[i].members[k].client_socket);
+					}
+					k++;
+				}
 				free(timestamp);free(str);free(js);
 				return;
 			}
@@ -748,6 +763,23 @@ void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 					sprintf(str,"You have left from room #%s.",protocol->content);	
 					sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->source,str,timestamp);
 					write(connfd,js,strlen(js)+1);
+					int k=0;
+					while (strcmp(current->joined[k],protocol->content)!=0) k++;
+					while (strcmp(current->joined[k],"\0")!=0) {
+						strcpy(current->joined[k],current->joined[k+1]);
+						k++;
+					}					
+					send_joinedlist(clnts,connfd);
+					k=0;
+					while (strcmp(chatrooms[i].members[k].username,"\0")!=0) {
+						if (chatrooms[i].members[k].client_socket!=connfd) {
+							sprintf(str,"User %s has left from room #%s.",protocol->source,protocol->content);
+							sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k].username,str,timestamp);
+							write(chatrooms[i].members[k].client_socket,js,strlen(js)+1);
+							send_userlist(clnts,protocol,chatrooms[i].members[k].client_socket);
+						}
+						k++;
+					}					
 					free(timestamp);free(str);free(js);					
 					return;
 				}

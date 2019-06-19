@@ -403,7 +403,7 @@ int main(int argc, char *argv[])
        
     statusbar = gtk_statusbar_new();
     gtk_widget_set_hexpand(statusbar,TRUE);
-    gchar *status = g_strdup_printf("Welcome to WChat v0.87. Connected to %s as %s.",server_ip,username);
+    gchar *status = g_strdup_printf("Welcome to WChat v0.87. Not connected to a server.");
     gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
     gtk_grid_attach_next_to(GTK_GRID (grid), statusbar, roomlist, GTK_POS_BOTTOM, 2, 1);
     gtk_widget_grab_focus (entry);    
@@ -552,8 +552,7 @@ void on_room_select() {
 	
 }
 
-void update_user_list(char* userslist) {
-	
+void update_user_list(char* userslist) {	
 	int len = strlen(userslist);
 	int k=0,l=0;
 	memset(users,0,3000);
@@ -715,6 +714,7 @@ void leave_room(const gchar *roomname) {
 				strcpy(jrooms[j],jrooms[j+1]);
 			}
 			joined--;
+			gtk_list_store_clear(GTK_LIST_STORE(umodel));
 			free(timestamp); free(js);
 			return;
 		}
