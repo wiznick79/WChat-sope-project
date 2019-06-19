@@ -1,5 +1,5 @@
 /*
- * Chat Client v0.87 (pthread+gtk version)- 17/06/2019 
+ * Chat Client v0.88 (pthread+gtk version)- 17/06/2019 
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
     else strcpy(server_ip,"wiznick.ddns.net");  // else default server ip is wiznick.ddns.net
     
     char *timestamp = get_time();
-    printf(GRN"%s Welcome to WChat v0.87"RESET"\n",timestamp);
+    printf(GRN"%s Welcome to WChat v0.88"RESET"\n",timestamp);
     free(timestamp);
 
     gtk_init (&argc, &argv);
@@ -308,7 +308,7 @@ int main(int argc, char *argv[])
     /* create a new window */
     window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
     gtk_widget_set_size_request (GTK_WIDGET (window), 900, 600);
-    gtk_window_set_title (GTK_WINDOW (window), "WChat v0.87");
+    gtk_window_set_title (GTK_WINDOW (window), "WChat v0.88");
     //gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
     gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
     g_signal_connect (window, "destroy", G_CALLBACK (quit_program), NULL);
@@ -403,7 +403,7 @@ int main(int argc, char *argv[])
        
     statusbar = gtk_statusbar_new();
     gtk_widget_set_hexpand(statusbar,TRUE);
-    gchar *status = g_strdup_printf("Welcome to WChat v0.87. Not connected to a server.");
+    gchar *status = g_strdup_printf("Welcome to WChat v0.88. Not connected to a server.");
     gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
     gtk_grid_attach_next_to(GTK_GRID (grid), statusbar, roomlist, GTK_POS_BOTTOM, 2, 1);
     gtk_widget_grab_focus (entry);    
@@ -439,7 +439,7 @@ void *listenforincoming(void *s) {
 			strcpy(username,protocol->target);
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
 			insert_text(buffer,msg);
-			gchar *status = g_strdup_printf("Welcome to WChat v0.87. Connected to %s as %s.",server_ip,username);
+			gchar *status = g_strdup_printf("Welcome to WChat v0.88. Connected to %s as %s.",server_ip,username);
 			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
 			free(msg);			
 		}		
@@ -447,7 +447,7 @@ void *listenforincoming(void *s) {
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
 			insert_text(buffer,msg);
 			request_room_list();				
-			gchar *status = g_strdup_printf("Welcome to WChat v0.87. Connected to %s as %s.",server_ip,username);
+			gchar *status = g_strdup_printf("Welcome to WChat v0.88. Connected to %s as %s.",server_ip,username);
 			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);					
 			free(msg);												
 		}
@@ -741,7 +741,7 @@ void help_window() {
 	GtkWidget *help = gtk_dialog_new_with_buttons("WChat help",GTK_WINDOW(window),flags,NULL,NULL);
 		
 	gtk_widget_set_size_request (GTK_WIDGET (help), 600, 270);
-   // gtk_window_set_title (GTK_WINDOW (help), "Wchat v0.87 - help");
+   // gtk_window_set_title (GTK_WINDOW (help), "Wchat v0.88 - help");
    // gtk_window_set_resizable(GTK_WINDOW(help),FALSE);
    // gtk_window_set_modal(GTK_WINDOW(help),FALSE);
    // gtk_window_set_transient_for(GTK_WINDOW(help),GTK_WINDOW(window));
@@ -750,7 +750,7 @@ void help_window() {
    // gtk_container_add(GTK_CONTAINER(help),hbox);
     GtkWidget *hbox = gtk_dialog_get_content_area(GTK_DIALOG(help));
     
-    GtkWidget *label = gtk_label_new("WChat v0.87 - Available commands: ");
+    GtkWidget *label = gtk_label_new("WChat v0.88 - Available commands: ");
     gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
     gtk_container_add(GTK_CONTAINER(hbox),label);
     
@@ -796,7 +796,7 @@ void help_window() {
 void about_window() {
 	GtkWidget *about = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 	gtk_widget_set_size_request (GTK_WIDGET (about), 260, 150);
-    gtk_window_set_title (GTK_WINDOW (about), "About WChat v0.87");
+    gtk_window_set_title (GTK_WINDOW (about), "About WChat v0.88");
     gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
     gtk_window_set_resizable(GTK_WINDOW(about),FALSE);
     gtk_window_set_modal(GTK_WINDOW(about),TRUE);
@@ -805,7 +805,7 @@ void about_window() {
     GtkWidget *abox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
     gtk_container_add(GTK_CONTAINER(about),abox);
     
-    GtkWidget *label = gtk_label_new("WChat v0.87\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa\nCopyright (c) 2019");
+    GtkWidget *label = gtk_label_new("WChat v0.88\nA chat client for Linux\nby Nikolaos Perris #36261\nand Alvaro Magalhaes #37000\nProject for Operating Systems\nUniversidade Fernando Pessoa\nCopyright (c) 2019");
     gtk_label_set_justify(GTK_LABEL(label),GTK_JUSTIFY_CENTER);
     gtk_container_add(GTK_CONTAINER(abox),label);
     
@@ -909,7 +909,7 @@ void sendusermsg(const gchar *gmsg) {
 				char *js = calloc(BUF_SIZE,sizeof(char));
 				sprintf(js,"{\"source\":\"%s\", \"target\":\"server\", \"type\":\"changename\", \"content\":\"%s\", \"timestamp\":\"%s\"}",tmp,username,timestamp);
 				write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
-				gchar *status = g_strdup_printf("Welcome to WChat v0.87. Connected to %s as %s.",server_ip,username);
+				gchar *status = g_strdup_printf("Welcome to WChat v0.88. Connected to %s as %s.",server_ip,username);
 				gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
 				free(js); free(status);
 			}
