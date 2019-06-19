@@ -499,7 +499,6 @@ void *listenforincoming(void *s) {
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
 			insert_text(buffer,msg);			
 			printf(GRN"%s You got kicked from the server. Restarting client."RESET"\n",timestamp);
-			gtk_widget_destroy(window);
 			close(srv_sock);
 			free(timestamp); free(msg);							
 			execv(args[0],args);			

@@ -103,14 +103,15 @@ void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd);
 void kick_user_from_room(CLIENTS *clnts, PROTOCOL *protocol);
 void *new_connection(void *cs);
 void *incoming_msgs(void *cs);
-void roomusers();
+void roomlist();
 
 int main(int argc, char **argv)
 {
     char *msg = calloc(BUF_SIZE,sizeof(char));    
     srand(time(NULL));
     CLIENTS clients={0,NULL};					// initialize the clients linked list
-    numofrooms = 0; 
+    numofrooms = 0;
+    pthread_mutex_init(&mtx,NULL); 
     pthread_mutex_init(&mtx1,NULL);
     pthread_mutex_init(&mtx2,NULL);
 
@@ -189,7 +190,7 @@ int main(int argc, char **argv)
 					kickuser(&clients,target,tmp);
 					free(tmp); free(target);					
 				}
-				else if (strncmp(msg,"/roomusers",10)==0) roomusers();
+				else if (strncmp(msg,"/roomlist",9)==0) roomlist();
 				else printf("%s Invalid command: %s",timestamp,msg);				
 				free(timestamp);				
 			}
@@ -203,11 +204,7 @@ int main(int argc, char **argv)
 					write(current->client_socket,js,strlen(js)+1);
 					current=current->next;
 				}
-				/*
-				PROTOCOL *protocol=parse_message(js);  	// parse the json string 
-				sendtoall(&clients,protocol);			// send the server message to everyone
-				*/
-				free(timestamp); free(js); //free(protocol);
+				free(timestamp); free(js);
 			}
 			memset(msg,0,BUF_SIZE);
 		}
@@ -239,12 +236,13 @@ int main(int argc, char **argv)
 	}	
 	pthread_join(newconn,NULL);
 	pthread_join(incmsg,NULL);
+	pthread_mutex_destroy(&mtx);	
 	pthread_mutex_destroy(&mtx1);
 	pthread_mutex_destroy(&mtx2);	    
 }
 
 void *new_connection(void *cs) {
-	pthread_mutex_lock(&mtx1);
+	pthread_mutex_lock(&mtx);
 	CLIENTS *clnts = ((CLIENTS *)cs);
 	socklen_t clilen = sizeof(cliaddr);
     int connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);	// accept the connection
@@ -267,13 +265,13 @@ void *new_connection(void *cs) {
 		free(js); free(connmsg);
 	}
 	send_roomlist(clnts);
-	pthread_mutex_unlock(&mtx1);
+	pthread_mutex_unlock(&mtx);
 	free(timestamp); free(protocol);
 	pthread_exit(0); 		// terminate the pthread
 }
 
 void *incoming_msgs(void *cs) {
-	pthread_mutex_lock(&mtx1);
+	pthread_mutex_lock(&mtx);
 	CLIENTS *clnts = ((CLIENTS *)cs);
 	PROTOCOL *protocol=parse_message(buf);  //parse the buffer(buf) that is read from the socket
 	// check type of protocol received and call the correct function
@@ -290,7 +288,7 @@ void *incoming_msgs(void *cs) {
 	else if (strcmp(protocol->type,"leave")==0) leave_room(clnts,protocol,cnfd);
 	else if (strcmp(protocol->type,"ban")==0) ban_user_from_room(clnts,protocol,cnfd);
 	free(protocol);
-	pthread_mutex_unlock(&mtx1);	
+	pthread_mutex_unlock(&mtx);	
 	pthread_exit(0); 		// terminate the pthread
 }
 
@@ -826,10 +824,16 @@ void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 		if (strcmp(protocol->target,current->username)==0) break;
 		current = current->next;
 	}	
-	printf("%s User %s trying to ban user %s(%s) from room #%s\n",timestamp,protocol->source,protocol->target,current->username,protocol->content);	
+	printf("%s User %s trying to ban user %s from room #%s\n",timestamp,protocol->source,protocol->target,protocol->content);	
 	for (int i=0;i<numofrooms;i++) {
 		if (strcmp(chatrooms[i].name,protocol->content)==0) {
 			if (strcmp(chatrooms[i].owner->username,protocol->source)==0) {	// user is room moderator, so he can ban
+				if (chatrooms[i].owner==current) {
+					printf("%s Moderator of room %s is trying to ban himself...\n",timestamp,protocol->content);
+					sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"You can't ban yourself from room #%s.\", \"timestamp\":\"%s\"}",protocol->source,protocol->content,timestamp);   
+					write(connfd, js, strlen(js)+1);
+					return;
+				}
 				for (int j=0;j<chatrooms[i].numofusers;j++) {
 					if (strcmp(chatrooms[i].members[j]->username,protocol->target)==0) {
 						for (int k=j; k<chatrooms[i].numofusers;k++) {
@@ -884,7 +888,7 @@ void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 	
 }
 
-void roomusers() {
+void roomlist() {
 	printf("There are %d rooms created in the server.\n",numofrooms);
 	for (int i=0;i<numofrooms;i++) {
 		printf("Room #%s (%d): \n",chatrooms[i].name,chatrooms[i].numofusers);
