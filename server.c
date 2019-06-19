@@ -66,7 +66,7 @@ typedef struct clients {
 typedef struct chatroom {
 	char name[30];
 	int numofusers;	
-	CLIENT members[MAX_USERS];
+	CLIENT *members[MAX_USERS];
 	CLIENT banned[50];
 	CLIENT *owner;
 }CHATROOM;
@@ -77,7 +77,7 @@ char server_host[30];
 int maxfd, listenfd, cnfd;
 fd_set allset;
 pthread_t newconn,incmsg;
-pthread_mutex_t mtx1,mtx2;
+pthread_mutex_t mtx,mtx1,mtx2;
 struct sockaddr_in cliaddr, servaddr;
 char buf[BUF_SIZE];
 
@@ -304,7 +304,7 @@ void sendtoall(CLIENTS *clnts, PROTOCOL *protocol) {
 	for (int i=0;i<numofrooms;i++) {
 		if (strcmp(protocol->target,chatrooms[i].name)==0) {			
 			for (int j=0;j<chatrooms[i].numofusers;j++) {
-				int socket = chatrooms[i].members[j].client_socket;
+				int socket = chatrooms[i].members[j]->client_socket;
 				write(socket,js,strlen(js)+1);
 			}		
 		}	
@@ -470,12 +470,12 @@ void remove_client(CLIENTS *clnts, int socket) {
 	
 	for (int i=0;i<numofrooms;i++) {
 		for (int j=0;j<chatrooms[i].numofusers;j++) {
-			if (socket==chatrooms[i].members[j].client_socket) {
+			if (socket==chatrooms[i].members[j]->client_socket) {
 				for (int k=j; k<chatrooms[i].numofusers;k++) {
 					chatrooms[i].members[k]=chatrooms[i].members[k+1];
 				}
 				chatrooms[i].numofusers--;
-				chatrooms[i].owner=&(chatrooms[i].members[0]);
+				chatrooms[i].owner=chatrooms[i].members[0];
 				if (chatrooms[i].numofusers==0) delete_room(&chatrooms[i],clnts);
 			}		
 		}
@@ -584,7 +584,7 @@ char* create_userlist(CLIENTS *clnts, PROTOCOL *protocol) {
 			char *list = calloc(chatrooms[i].numofusers*30,sizeof(char)+1);	
 			sprintf(list,"Users(%2d):",chatrooms[i].numofusers);
 			for (int j=0;j<chatrooms[i].numofusers;j++) {
-				strcat(list, chatrooms[i].members[j].username);
+				strcat(list, chatrooms[i].members[j]->username);
 				if (j<chatrooms[i].numofusers-1) strcat(list,",");
 			}
 			return list;
@@ -662,7 +662,7 @@ void create_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 	CLIENT *current=clnts->first;
 	while (current!=NULL) {	
 		if (connfd==current->client_socket) {
-			room->members[0]=*current;
+			room->members[0]=current;
 			room->owner=current;
 			break;
 		}
@@ -690,7 +690,7 @@ void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 	for (int i=0;i<numofrooms;i++) {
 		if (strcmp(protocol->content,chatrooms[i].name)==0) {
 			for (int j=0;j<chatrooms[i].numofusers;j++) {
-				if (strcmp(protocol->source,chatrooms[i].members[j].username)==0) {
+				if (strcmp(protocol->source,chatrooms[i].members[j]->username)==0) {
 					printf("%s User %s is already in room #%s\n",timestamp,protocol->source,protocol->content);
 					sprintf(str,"You are already in room #%s",protocol->content);	
 					sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",protocol->source,str,timestamp);
@@ -700,7 +700,7 @@ void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 				}
 			}
 			if (chatrooms[i].numofusers<5) {
-				chatrooms[i].members[chatrooms[i].numofusers]=*current;
+				chatrooms[i].members[chatrooms[i].numofusers]=current;
 				chatrooms[i].numofusers++;
 				printf("%s User %s joined room #%s\n",timestamp,protocol->source,protocol->content);
 				sprintf(str,"You have joined room #%s.",protocol->content);	
@@ -710,13 +710,13 @@ void join_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 				while (strcmp(current->joined[k],"\0")!=0) k++;
 				strcpy(current->joined[k],chatrooms[i].name);
 				send_joinedlist(clnts,connfd);
-				k=0;
-				while (strcmp(chatrooms[i].members[k].username,"\0")!=0) {
-					if (chatrooms[i].members[k].client_socket!=connfd) {
+				k=0;				
+				while (chatrooms[i].members[k]!=NULL) {	
+					if (chatrooms[i].members[k]->client_socket!=connfd) {
 						sprintf(str,"User %s has joined room #%s.",protocol->source,protocol->content);
-						sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k].username,str,timestamp);
-						write(chatrooms[i].members[k].client_socket,js,strlen(js)+1);
-						send_userlist(clnts,protocol,chatrooms[i].members[k].client_socket);
+						sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k]->username,str,timestamp);
+						write(chatrooms[i].members[k]->client_socket,js,strlen(js)+1);
+						send_userlist(clnts,protocol,chatrooms[i].members[k]->client_socket);
 					}
 					k++;
 				}
@@ -752,12 +752,12 @@ void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 	for (int i=0;i<numofrooms;i++) {
 		if (strcmp(protocol->content,chatrooms[i].name)==0) {
 			for (int j=0;j<chatrooms[i].numofusers;j++) {
-				if (strcmp(protocol->source,chatrooms[i].members[j].username)==0) {
+				if (strcmp(protocol->source,chatrooms[i].members[j]->username)==0) {
 					for (int k=j; k<chatrooms[i].numofusers;k++) {
 						chatrooms[i].members[k]=chatrooms[i].members[k+1];
 					}
 					chatrooms[i].numofusers--;
-					chatrooms[i].owner=&(chatrooms[i].members[0]);
+					chatrooms[i].owner=chatrooms[i].members[0];
 					if (chatrooms[i].numofusers==0) delete_room(&chatrooms[i],clnts);
 					printf("%s User %s left from room #%s\n",timestamp,protocol->source,protocol->content);
 					sprintf(str,"You have left from room #%s.",protocol->content);	
@@ -771,12 +771,12 @@ void leave_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 					}					
 					send_joinedlist(clnts,connfd);
 					k=0;
-					while (strcmp(chatrooms[i].members[k].username,"\0")!=0) {
-						if (chatrooms[i].members[k].client_socket!=connfd) {
+					while (chatrooms[i].members[k]!=NULL) {
+						if (chatrooms[i].members[k]->client_socket!=connfd) {
 							sprintf(str,"User %s has left from room #%s.",protocol->source,protocol->content);
-							sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k].username,str,timestamp);
-							write(chatrooms[i].members[k].client_socket,js,strlen(js)+1);
-							send_userlist(clnts,protocol,chatrooms[i].members[k].client_socket);
+							sprintf(js,"{\"source\":\"Server\", \"target\":\"%s\", \"type\":\"srvmsg\", \"content\":\"%s\", \"timestamp\":\"%s\"}",chatrooms[i].members[k]->username,str,timestamp);
+							write(chatrooms[i].members[k]->client_socket,js,strlen(js)+1);
+							send_userlist(clnts,protocol,chatrooms[i].members[k]->client_socket);
 						}
 						k++;
 					}					
@@ -821,7 +821,7 @@ void ban_user_from_room(CLIENTS *clnts, PROTOCOL *protocol,int connfd) {
 		if (strcmp(chatrooms[i].name,protocol->target)==0) {
 			if (strcmp(chatrooms[i].owner->username,protocol->source)==0) {	// user is room moderator, so he can ban
 				for (int j=0;j<chatrooms[i].numofusers;j++) {
-					if (strcmp(chatrooms[i].members[j].username,protocol->content)==0) {
+					if (strcmp(chatrooms[i].members[j]->username,protocol->content)==0) {
 						for (int k=j; k<chatrooms[i].numofusers;k++) {
 							chatrooms[i].members[k]=chatrooms[i].members[k+1];
 						}
@@ -860,7 +860,7 @@ void roomusers() {
 		printf("Room %s (%d): \n",chatrooms[i].name,chatrooms[i].numofusers);
 		printf("Owner: %s , Members : ",chatrooms[i].owner->username);
 		for (int j=0;j<chatrooms[i].numofusers;j++) {
-			 printf("%s ",chatrooms[i].members[j].username);
+			 printf("%s ",chatrooms[i].members[j]->username);
 			 if (j<chatrooms[i].numofusers-1) printf(",");
 		}
 		printf("\n");
