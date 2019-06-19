@@ -119,10 +119,10 @@ static GtkWidget *create_roomlist() {
     gtk_tree_view_set_model (GTK_TREE_VIEW (rooms_tree), GTK_TREE_MODEL (rmodel));
     //gtk_widget_show (rooms_tree);
     
-    // Add the roomlist to the window 
+    // Add the joinedlist to the window 
     for (int i = 0; i < numofrooms; i++) { 
 		gchar *rmsg = g_strdup_printf ("%s", jrooms[i]);
-        gtk_list_store_append (GTK_LIST_STORE (rmodel), &roomiter);
+        gtk_list_store_append (GTK_LIST_STORE(rmodel), &roomiter);
         gtk_list_store_set (GTK_LIST_STORE (rmodel), &roomiter, 0, rmsg, -1);
         g_free (rmsg);
     }
@@ -715,6 +715,15 @@ void leave_room(const gchar *roomname) {
 			}
 			joined--;
 			gtk_list_store_clear(GTK_LIST_STORE(umodel));
+			gtk_list_store_clear(GTK_LIST_STORE(rmodel));
+			int i=0; 
+			while (strcmp(jrooms[i],"\0")!=0) {				 
+				gchar *rstr = g_strdup_printf ("%s", jrooms[i]);
+				gtk_list_store_append (GTK_LIST_STORE(rmodel), &roomiter);        
+				gtk_list_store_set (GTK_LIST_STORE(rmodel), &roomiter, 0, rstr, -1);
+				i++;
+				g_free (rstr);
+			}
 			free(timestamp); free(js);
 			return;
 		}
