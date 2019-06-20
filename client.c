@@ -63,6 +63,7 @@ void help_window();
 void about_window();
 void connect_to_srv(GtkWidget *entry, gpointer dialog);
 void ban_user(char *msg);
+void disconnect();
 
 int c;	
 struct sockaddr_in channel;		/* holds IP address */ 
@@ -183,7 +184,7 @@ static void connect_dialog() {
     if (response == GTK_RESPONSE_OK) {		
 		connect_to_srv(dentry,dialog);		
 	}
-    else 
+    else 		
 		gtk_widget_destroy(dialog);
 }
 
@@ -196,10 +197,10 @@ void connect_to_srv(GtkWidget *entry, gpointer dialog) {
 		while (username[k]!='\0') {			// loop to replace all non-alphanumeric chars with an underscore
 			if (isalnum(username[k])==0) username[k]='_';
 			k++;
-		}
+		}		
 		gtk_widget_destroy(dialog);					
 	}
-	else {		
+	else {			
 		connect_dialog();
 	}
 			 
@@ -245,21 +246,14 @@ static void insert_text(GtkTextBuffer *buffer, const gchar *entry_text) {
 static void enter_callback(GtkWidget *widget, GtkWidget *entry) {
     const gchar *entry_text;
     entry_text = gtk_entry_get_text(GTK_ENTRY(entry));
-    
-    //GtkTextBuffer *buffer;    
-    //buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
-
-    //insert_text(buffer, entry_text);   
-    sendusermsg(entry_text);    
+     sendusermsg(entry_text);    
     gtk_entry_set_text (GTK_ENTRY (entry), "");   
 }
 
 /* Create a scrolled text area that displays a "message" */
 static GtkWidget *create_text(void) {
-    GtkWidget *scrolled_window;
-    //GtkTextBuffer *buffer;
-    view = gtk_text_view_new ();
-    //buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    GtkWidget *scrolled_window;    
+    view = gtk_text_view_new ();    
     scrolled_window = gtk_scrolled_window_new (NULL, NULL);
     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled_window),
                                     GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
@@ -329,16 +323,11 @@ int main(int argc, char *argv[])
     menuhelp = gtk_menu_item_new_with_mnemonic("_Help");    
     filesubmenu = gtk_menu_new();
     helpsubmenu = gtk_menu_new();    
-    item_connect = gtk_menu_item_new_with_mnemonic("_Connect");
-    //item_connect = gtk_image_menu_item_new_from_stock(GTK_STOCK_CONNECT, NULL);
-    item_disconnect = gtk_menu_item_new_with_mnemonic("_Disconnect");  
-    //item_disconnect = gtk_image_menu_item_new_from_stock(GTK_STOCK_DISCONNECT, NULL);
-    item_quit = gtk_menu_item_new_with_mnemonic("_Quit"); 
-    //item_quit = gtk_image_menu_item_new_from_stock(GTK_STOCK_QUIT, NULL);
-    item_help = gtk_menu_item_new_with_mnemonic("_Help"); 
-    //item_help = gtk_image_menu_item_new_from_stock(GTK_STOCK_HELP, NULL);
-    item_about = gtk_menu_item_new_with_mnemonic("_About"); 
-    //item_about = gtk_image_menu_item_new_from_stock(GTK_STOCK_ABOUT, NULL);  
+    item_connect = gtk_menu_item_new_with_mnemonic("_Connect");    
+    item_disconnect = gtk_menu_item_new_with_mnemonic("_Disconnect");     
+    item_quit = gtk_menu_item_new_with_mnemonic("_Quit");     
+    item_help = gtk_menu_item_new_with_mnemonic("_Help");    
+    item_about = gtk_menu_item_new_with_mnemonic("_About");     
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(menufile), filesubmenu);   
     gtk_menu_shell_append(GTK_MENU_SHELL(filesubmenu), item_connect);
     gtk_menu_shell_append(GTK_MENU_SHELL(filesubmenu), item_disconnect);
@@ -349,7 +338,8 @@ int main(int argc, char *argv[])
     gtk_menu_shell_append(GTK_MENU_SHELL(helpsubmenu), item_about);  
     gtk_menu_shell_append(GTK_MENU_SHELL(menubar), menuhelp);    
     gtk_grid_attach(GTK_GRID (grid), menubar, 0, 0, 2, 1);
-    g_signal_connect_swapped (item_connect, "activate", G_CALLBACK (connect_dialog), NULL);    
+    g_signal_connect_swapped (item_connect, "activate", G_CALLBACK (connect_dialog), NULL); 
+    g_signal_connect_swapped (item_disconnect, "activate", G_CALLBACK (disconnect), NULL);   
 	g_signal_connect_swapped (item_quit, "activate", G_CALLBACK (quit_program), NULL);
 	g_signal_connect_swapped (item_help, "activate", G_CALLBACK (help_window), NULL);
 	g_signal_connect_swapped (item_about, "activate", G_CALLBACK (about_window), NULL);
@@ -424,8 +414,7 @@ void *listenforincoming(void *s) {
 	char* buf = calloc(BUF_SIZE,sizeof(char));
 	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));		
 
-	while (read(srv_sock,buf,BUF_SIZE)) {
-		
+	while (read(srv_sock,buf,BUF_SIZE)) {		
 		//write(1,buf,BUF_SIZE);	// debug msg
 		char *timestamp = get_time();
 		PROTOCOL* protocol=parse_message(buf);
@@ -446,7 +435,7 @@ void *listenforincoming(void *s) {
 		else if (strcmp(protocol->type,"welcome")==0) {				// print the incoming welcome message
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
 			insert_text(buffer,msg);
-			request_room_list();				
+			//request_room_list();				
 			gchar *status = g_strdup_printf("Welcome to WChat v0.88. Connected to %s as %s.",server_ip,username);
 			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);					
 			free(msg);												
@@ -509,6 +498,16 @@ void *listenforincoming(void *s) {
 			gtk_list_store_clear(GTK_LIST_STORE(umodel));			
 			free(msg);
 		}
+		else if (strcmp(protocol->type,"showrooms")==0) {
+			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
+			insert_text(buffer,msg);
+			free(msg);	
+		}
+		else if (strcmp(protocol->type,"showusers")==0) {
+			gchar *msg = g_strdup_printf("%s Room #%s %s",timestamp,protocol->target,protocol->content);
+			insert_text(buffer,msg);
+			free(msg);	
+		}
 		memset(buf,0,BUF_SIZE);
 		free(protocol);	free(timestamp);		
 	}
@@ -522,7 +521,7 @@ void *listenforincoming(void *s) {
 	return 0;
 }
 
-void *sendmessages(void *s) {	
+void *sendmessages(void *s) {	// this just reads msgs from the terminal
 	char* msg = calloc(BUF_SIZE,sizeof(char)); 
 	
 	while(fgets(msg,BUF_SIZE,stdin) > 0) {
@@ -595,7 +594,7 @@ void request_user_list() {
 void update_room_cbox(char *roomslist) {
 	
 	int len = strlen(roomslist);
-	char str[3];
+	char str[3]={0};
 	int k=0,l=0;
 	memset(rooms,0,1500);	
 	str[0]=roomslist[6];
@@ -727,8 +726,8 @@ void quit_program() {
 	char *timestamp = get_time();
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"everyone\", \"type\":\"user_off\", \"content\":\"Leaving\", \"timestamp\":\"%s\"}",username,timestamp);
 	write(srv_sock, js, strlen(js)+1);		// send a json string of type user_off to the server
-	//gtk_widget_destroy(window);
 	printf(RED"%s Exiting WChat..."RESET"\n",get_time());
+	close(srv_sock);
 	exit(0);
 }
 
@@ -882,6 +881,7 @@ void sendusermsg(const gchar *gmsg) {
 			char tmp[30];
 			strcpy(tmp,username);					// store previous username in tmp 
 			memset(username,0,sizeof(username));
+			if (len>35) len=35;
 			for (int i=6;i<len;i++) {
 				if (msg[i]=='\n' || msg[i]=='\0') {		// cycle stops when it finds the new line char
 					username[j]='\0';
@@ -965,7 +965,11 @@ void sendusermsg(const gchar *gmsg) {
 			free(target);
 		}	
 		else if (strncmp(msg,"/showrooms",10)==0) {
-			request_room_list();
+			char *timestamp = get_time();
+			char *js = calloc(BUF_SIZE,sizeof(char));
+			sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"showrooms\", \"content\":\"null\", \"timestamp\":\"%s\"}",username,timestamp);
+			write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
+			free(js); free(timestamp);			
 		}
 		else if (strncmp(msg,"/showusers",10)==0) {
 			char *timestamp = get_time();
@@ -982,7 +986,7 @@ void sendusermsg(const gchar *gmsg) {
 					j++;
 				}
 			}			
-			sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"userlist\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,target,timestamp);
+			sprintf(js,"{\"source\":\"%s\", \"target\":\"Server\", \"type\":\"showusers\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,target,timestamp);
 			write(srv_sock, js, strlen(js)+1); 		// send the json string	to the server
 			free(js); free(timestamp);
 		}
@@ -1047,6 +1051,20 @@ void ban_user(char *msg) {
 	printf("%s Trying to ban %s from #%s.\n",timestamp,targetuser,targetroom);	
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"%s\", \"type\":\"ban\", \"content\":\"%s\", \"timestamp\":\"%s\"}",username,targetuser,targetroom,timestamp);   
 	write(srv_sock, js, strlen(js)+1); 		// send the  json string	to the server
-	free(targetuser); free(targetroom); free(timestamp); free(js);
-	
+	free(targetuser); free(targetroom); free(timestamp); free(js);	
+}
+
+void disconnect() {
+	char *js = calloc(BUF_SIZE,sizeof(char));
+	char *timestamp = get_time();
+	sprintf(js,"{\"source\":\"%s\", \"target\":\"everyone\", \"type\":\"user_off\", \"content\":\"Leaving\", \"timestamp\":\"%s\"}",username,timestamp);
+	write(srv_sock, js, strlen(js)+1);		// send a json string of type user_off to the server
+	printf(RED"%s Disconnected from the server"RESET"\n",get_time());
+	gchar *status = g_strdup_printf("Welcome to WChat v0.88. Not connected to a server.");
+    gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
+    gtk_list_store_clear(GTK_LIST_STORE(umodel));
+    gtk_list_store_clear(GTK_LIST_STORE(rmodel));
+	gtk_combo_box_text_remove_all (GTK_COMBO_BOX_TEXT(combobox)); 
+	free(timestamp); free(js); free(status);
+	close(srv_sock);
 }
