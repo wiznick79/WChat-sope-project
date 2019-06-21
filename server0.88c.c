@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     numofrooms = 0;
     pthread_mutex_init(&mtx,NULL);
     pthread_mutex_init(&mtx1,NULL);
-	sem_init(&sem,0,1);
+	sem_init(&sem,0,0);
 	sem_init(&semP,0,0);
 	sem_init(&semC,0,0);
 
@@ -175,9 +175,9 @@ int main(int argc, char **argv)
 			if (FD_ISSET(current->client_socket, &allset)) {		// check if there is activity in one of them
 				
 				cnfd = current->client_socket;
-				sem_post(&semP);
+				sem_post(&semP);				
 				
-				printf("test 1?!\n");							
+				sem_wait(&sem);							
 								
 			}						
 			current=current->next;
@@ -213,7 +213,7 @@ void *msg_p(void *cs) {
 			free(timestamp);
 			close(cnfd);		// close the socket
 			remove_client(clnts, cnfd);	// remove the client from the clients linked list
-			sem_post(&semP);						
+			sem_post(&sem);						
 		}
 		else {								
 			sem_post(&semC);
@@ -244,7 +244,7 @@ void *incoming_msgs(void *cs) {
 		else if (strcmp(protocol->type,"showrooms")==0) showrooms(clnts,protocol,cnfd);
 		else if (strcmp(protocol->type,"showusers")==0) showusers(clnts,protocol,cnfd);
 		free(protocol);
-		sem_post(&semP);			
+		sem_post(&sem);			
 		pthread_mutex_unlock(&mtx);	
 	}	
 }
