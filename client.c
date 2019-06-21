@@ -1,5 +1,5 @@
 /*
- * Chat Client v0.88 (pthread+gtk version)- 17/06/2019 
+ * Chat Client v0.88 (pthread+gtk version)- 19/06/2019 
  * by Nikolaos Perris (#36261) and Alvaro Magalhaes (#37000)
 */
 
@@ -118,7 +118,6 @@ static GtkWidget *create_roomlist() {
     rooms_tree = gtk_tree_view_new ();
     gtk_container_add (GTK_CONTAINER (scrolled_window), rooms_tree);
     gtk_tree_view_set_model (GTK_TREE_VIEW (rooms_tree), GTK_TREE_MODEL (rmodel));
-    //gtk_widget_show (rooms_tree);
     
     // Add the joinedlist to the window 
     for (int i = 0; i < numofrooms; i++) { 
@@ -303,7 +302,6 @@ int main(int argc, char *argv[])
     window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
     gtk_widget_set_size_request (GTK_WIDGET (window), 900, 600);
     gtk_window_set_title (GTK_WINDOW (window), "WChat v0.88");
-    //gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
     gtk_window_set_icon (GTK_WINDOW(window), create_pixbuf("icon.png"));
     g_signal_connect (window, "destroy", G_CALLBACK (quit_program), NULL);
     g_signal_connect_swapped (window, "delete-event",
@@ -434,8 +432,7 @@ void *listenforincoming(void *s) {
 		}		
 		else if (strcmp(protocol->type,"welcome")==0) {				// print the incoming welcome message
 			gchar *msg = g_strdup_printf("%s %s",timestamp,protocol->content);
-			insert_text(buffer,msg);
-			//request_room_list();				
+			insert_text(buffer,msg);							
 			gchar *status = g_strdup_printf("Welcome to WChat v0.88. Connected to %s as %s.",server_ip,username);
 			gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);					
 			free(msg);												
@@ -493,7 +490,7 @@ void *listenforincoming(void *s) {
 			execv(args[0],args);			
 		}
 		else if (strcmp(protocol->type,"ban")==0) {		// if banned from a room
-			gchar *msg = g_strdup_printf("%s You got banned from room #%s",timestamp,protocol->content);
+			gchar *msg = g_strdup_printf("%s You got banned from room #%s.",timestamp,protocol->content);
 			insert_text(buffer,msg);
 			gtk_list_store_clear(GTK_LIST_STORE(umodel));			
 			free(msg);
@@ -733,18 +730,11 @@ void quit_program() {
 
 void help_window() {
 	gchar *txt;
-	//GtkWidget *help = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 	GtkDialogFlags flags = GTK_DIALOG_DESTROY_WITH_PARENT;
 	GtkWidget *help = gtk_dialog_new_with_buttons("WChat help",GTK_WINDOW(window),flags,NULL,NULL);
 		
 	gtk_widget_set_size_request (GTK_WIDGET (help), 600, 270);
-   // gtk_window_set_title (GTK_WINDOW (help), "Wchat v0.88 - help");
-   // gtk_window_set_resizable(GTK_WINDOW(help),FALSE);
-   // gtk_window_set_modal(GTK_WINDOW(help),FALSE);
-   // gtk_window_set_transient_for(GTK_WINDOW(help),GTK_WINDOW(window));
-    
-   // GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_VERTICAL,2);
-   // gtk_container_add(GTK_CONTAINER(help),hbox);
+
     GtkWidget *hbox = gtk_dialog_get_content_area(GTK_DIALOG(help));
     
     GtkWidget *label = gtk_label_new("WChat v0.88 - Available commands: ");
@@ -1057,14 +1047,17 @@ void ban_user(char *msg) {
 void disconnect() {
 	char *js = calloc(BUF_SIZE,sizeof(char));
 	char *timestamp = get_time();
+	GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));	
 	sprintf(js,"{\"source\":\"%s\", \"target\":\"everyone\", \"type\":\"user_off\", \"content\":\"Leaving\", \"timestamp\":\"%s\"}",username,timestamp);
 	write(srv_sock, js, strlen(js)+1);		// send a json string of type user_off to the server
 	printf(RED"%s Disconnected from the server"RESET"\n",get_time());
+	gchar *msg = g_strdup_printf("%s Disconnected from the server.",timestamp);
+	insert_text(buffer,msg);
 	gchar *status = g_strdup_printf("Welcome to WChat v0.88. Not connected to a server.");
     gtk_statusbar_push(GTK_STATUSBAR (statusbar), 0, status);
     gtk_list_store_clear(GTK_LIST_STORE(umodel));
     gtk_list_store_clear(GTK_LIST_STORE(rmodel));
 	gtk_combo_box_text_remove_all (GTK_COMBO_BOX_TEXT(combobox)); 
-	free(timestamp); free(js); free(status);
+	free(timestamp); free(js); free(status); free(msg);
 	close(srv_sock);
 }

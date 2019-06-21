@@ -13,6 +13,7 @@ v0.88 - 19/06/2019
 - Disconnect menu option is now working
 - /showrooms and /showusers commands print messages in main window instead of updating combobox and userlist
 - Ban user function improved, also /banlist command added on server to check banned users for chatrooms
+- Added some semaphores stuff for the Producer/Consumer requirement (not fully working)
 
 v0.87 - 17/06/2019
 - Users can create and join multiple rooms
