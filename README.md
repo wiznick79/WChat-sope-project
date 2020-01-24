@@ -4,6 +4,7 @@ It was made as a project for the class of Operating Systems, Universidade Fernan
 
 compile client with: 
 gcc -o client client.c `pkg-config --cflags gtk+-3.0` `pkg-config --libs gtk+-3.0` -pthread
+
 compile server with:
 gcc -o server server.c -pthread
 
