@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-# sope-project-phase2 by Nikolaos Perris (#36261) and Alvaro Magalhães (#37000)
+# WChat-sope-project by Nikolaos Perris (#36261) and Alvaro Magalhães (#37000)
 A chat server and client, written in C, using GKT3 for the GUI part.
 It was made as a project for the class of Operating Systems, Universidade Fernando Pessoa, in 2019.
 
