@@ -1,4 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/5517acd2d6ef471f8fdf080800b7ef8e)](https://www.codacy.com/gh/wiznick79/WChat-sope-project/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=wiznick79/WChat-sope-project&amp;utm_campaign=Badge_Grade)
 
 # WChat-sope-project by Nikolaos Perris (#36261) and Alvaro Magalhães (#37000)
 A chat server and client, written in C, using GKT3 for the GUI part.
